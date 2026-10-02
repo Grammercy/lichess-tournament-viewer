@@ -2,7 +2,7 @@ import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTourn
 import { tournamentInfo, tournamentGames, refreshGames } from './api.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={games:new Map(),positions:new Map(),filter:'all',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0};
+const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0};
 state.completeExport=true;
 const cardCache=new Map();
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
@@ -22,6 +22,7 @@ function render(){
   document.querySelector('.app-shell').classList.toggle('awaiting-tournament',!loaded);
   $('no-tournament').hidden=loaded;
   for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
+  document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab.dataset.filter===state.filter;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});
   const all=[...state.games.values()].sort((a,b)=>Number(isPlaying(b))-Number(isPlaying(a))||(b.createdAt??0)-(a.createdAt??0));
   const playing=all.filter(isPlaying).length;
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
@@ -66,7 +67,7 @@ async function loadTournament(value){
   try {
     let info;try{info=await tournamentInfo(tournament,controller.signal);}catch(error){if(error.status!==404||tournament.type==='swiss')throw error;tournament={...tournament,type:'swiss'};info=await tournamentInfo(tournament,controller.signal);}
     if(controller.signal.aborted)return {ok:false};
-    state.tournament=tournament;state.games.clear();state.positions.clear();state.flipped.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
+    state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
     history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
     setStatus('Loading games…');
     await tournamentGames(tournament,controller.signal,mergeGame);
@@ -101,7 +102,7 @@ function renderDialog(){const g=state.games.get(state.selected);if(!g)return;con
 document.addEventListener('click',event=>{const flip=event.target.closest('[data-flip]');if(flip){const id=flip.dataset.flip;state.flipped.has(id)?state.flipped.delete(id):state.flipped.add(id);render();return;}const open=event.target.closest('[data-open]');if(open){state.selected=open.dataset.open;renderDialog();$('game-dialog').showModal();}});
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
-document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab===b;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});render();}));
+document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
 $('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{$('game-grid').className=`game-grid ${b.dataset.density}`;document.querySelectorAll('[data-density]').forEach(x=>x.classList.toggle('selected',x===b));}));
