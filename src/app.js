@@ -19,8 +19,9 @@ function cardHtml(game,index,detail=false){
 }
 function render(){
   const loaded=Boolean(state.tournament);
+  document.querySelector('.app-shell').classList.toggle('awaiting-tournament',!loaded);
   $('no-tournament').hidden=loaded;
-  for(const id of ['tournament-panel','standings-panel','sidebar-bottom','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
+  for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
   const all=[...state.games.values()].sort((a,b)=>Number(isPlaying(b))-Number(isPlaying(a))||(b.createdAt??0)-(a.createdAt??0));
   const playing=all.filter(isPlaying).length;
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
@@ -40,10 +41,10 @@ function render(){
 }
 function queueRender(){if(!state.renderTimer)state.renderTimer=setTimeout(()=>{state.renderTimer=null;render();},250);}
 function showNotice(message,error=false){$('notice').hidden=!message;$('notice').textContent=message;$('notice').classList.toggle('error',error);}
-function setStatus(text,connected=false){$('update-status').innerHTML=`<span class="${connected?'live-dot':'connection-dot'}"></span>${esc(text)}`;$('connection-text').textContent=text;}
+function setStatus(text,connected=false){$('update-status').innerHTML=`<span class="${connected?'live-dot':'connection-dot'}"></span>${esc(text)}`;}
 function tourFinished(info){return info?.isFinished===true||info?.status==='finished';}
 function updateInfo(info){
-  state.info=info;const name=info.fullName??info.name??'Tournament';$('tournament-name').textContent=name;$('page-tournament-name').textContent=name;document.title=`${name} · Tournament View`;
+  state.info=info;const name=info.fullName??info.name??'Tournament';$('tournament-name').textContent=name;$('page-tournament-name').textContent=name;document.title=`Viewing ${name}`;
   $('tournament-kind').textContent=state.tournament.type==='swiss'?'SWISS':`${info.perf?.name??'ARENA'} ARENA`;
   const finished=tourFinished(info);const pending=info.status==='created'||info.isStarted===false;
   $('tournament-status').textContent=finished?'FINISHED':pending?'UPCOMING':'PLAYING';$('tournament-status').classList.toggle('playing',!finished&&!pending);

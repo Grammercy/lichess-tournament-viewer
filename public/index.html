@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#161512"><meta name="description" content="Follow every game in a Lichess Arena or Swiss tournament on one board wall.">
-  <title>Tournament View · Lichess tournament viewer</title>
+  <title>Tournament Viewer</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -12,7 +12,7 @@
     <div class="header-divider"></div><span class="product-name">Tournament view</span>
     <div class="header-end"><a href="https://lichess.org/tournament" target="_blank" rel="noopener">Explore tournaments <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></a><button class="icon-button" id="theme-button" title="Switch to light theme" aria-label="Switch to light theme"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.9 13.1A9 9 0 0 1 10.9 3.1 9 9 0 1 0 20.9 13.1Z"/></svg></button></div>
   </header>
-  <div class="app-shell">
+  <div class="app-shell awaiting-tournament">
     <aside class="sidebar">
       <div class="sidebar-heading"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4m-4 1v7m-5 1h10"/></svg> TOURNAMENT</div>
       <form id="tournament-form" class="tournament-form">
@@ -28,7 +28,6 @@
         <a id="tournament-external" class="text-link" href="https://lichess.org/tournament" target="_blank" rel="noopener">View on Lichess <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></a>
       </section>
       <section class="standings-panel" id="standings-panel" hidden><div class="section-label">TOP PLAYERS <span>POINTS</span></div><ol id="standings"></ol><p id="standings-note" class="form-hint"></p></section>
-      <div class="sidebar-bottom" id="sidebar-bottom" hidden><span class="connection-dot"></span><span id="connection-text"></span></div>
     </aside>
     <main>
       <div class="page-heading" id="page-heading" hidden><h1 id="page-tournament-name"></h1><div class="update-status" id="update-status"></div></div>
@@ -36,8 +35,13 @@
       <div class="toolbar" id="toolbar" hidden><div class="game-tabs" role="tablist" aria-label="Games"><button class="game-tab active" role="tab" aria-selected="true" data-filter="all">All games <span id="tab-all">0</span></button><button class="game-tab" role="tab" aria-selected="false" data-filter="playing">Playing <span id="tab-playing">0</span></button><button class="game-tab" role="tab" aria-selected="false" data-filter="finished">Finished <span id="tab-finished">0</span></button></div><div class="view-controls"><label class="search-input"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="player-search" placeholder="Find a player" aria-label="Find a player"></label><div class="density-controls" aria-label="Board size"><button class="icon-button" data-density="comfortable" title="Larger boards" aria-label="Larger boards"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button><button class="icon-button selected" data-density="compact" title="More boards" aria-label="More boards"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h4v4H3zm7 0h4v4h-4zm7 0h4v4h-4zM3 10h4v4H3zm7 0h4v4h-4zm7 0h4v4h-4zM3 17h4v4H3zm7 0h4v4h-4zm7 0h4v4h-4z"/></svg></button></div><button id="refresh-button" class="icon-button" title="Refresh games" aria-label="Refresh games"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 7v5h-5M4 17v-5h5m-4-3a8 8 0 0 1 13-4l3 3M3 16l3 3a8 8 0 0 0 13-4"/></svg></button></div></div>
       <div id="notice" role="status" aria-live="polite" hidden></div>
       <div class="no-tournament" id="no-tournament" role="status">
-        <svg class="no-tournament-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4m-4 1v7m-5 1h10"/></svg>
-        <button id="paste-link-prompt" type="button">Paste a tournament link</button>
+        <div class="homura-prompt">
+          <img class="homura-icon" src="/homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
+          <button id="paste-link-prompt" class="prompt-bubble" type="button" aria-controls="tournament-input">
+            <span class="prompt-title">Paste a tournament link</span>
+            <span class="prompt-hint">Then choose Watch tournament.</span>
+          </button>
+        </div>
       </div>
       <section id="game-grid" class="game-grid compact" aria-label="Tournament games"></section>
       <div id="empty-state" class="empty-state" hidden><img src="/pieces/wN.svg" alt="" width="64" height="64"><h2 id="empty-title">No games to show</h2><p id="empty-message">Try another player or game filter.</p></div>
