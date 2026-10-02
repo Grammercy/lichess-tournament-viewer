@@ -2,7 +2,7 @@ import { defaultPosition, setupPosition } from 'chessops/variant';
 import { lichessRules } from 'chessops/compat';
 import { parseFen, makeFen } from 'chessops/fen';
 import { parseSan } from 'chessops/san';
-import { makeSquare } from 'chessops/util';
+import { makeSquare, parseUci } from 'chessops/util';
 
 export function parseTournament(value) {
   const input=String(value??'').trim();
@@ -15,18 +15,49 @@ export function parseTournament(value) {
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
 export function resultOf(game) {return isPlaying(game)?'*':game.winner==='white'?'1–0':game.winner==='black'?'0–1':game.status==='aborted'?'Aborted':'½–½';}
+export function mergeGameData(previous, game) {
+  const merged={...previous,...game,moves:game.moves??previous?.moves,clocks:game.clocks??previous?.clocks,opening:game.opening??previous?.opening};
+  // A delayed export must not undo an already streamed result or position.
+  if(previous&&!isPlaying(previous)&&isPlaying(game)){merged.status=previous.status;merged.winner=previous.winner;}
+  if(!isPlaying(game)&&typeof game.moves==='string')delete merged.live;
+  return merged;
+}
+export function withLivePosition(game, data, now=performance.now()) {
+  const setup=parseFen(data.fen).unwrap();
+  const last=parseUci(data.lm??'');
+  const clocks={white:Number.isFinite(data.wc)?data.wc:undefined,black:Number.isFinite(data.bc)?data.bc:undefined};
+  const live={fen:data.fen,last,clocks,receivedAt:now,turn:setup.turn};
+  if(game.live?.fen===live.fen&&game.live?.uci===data.lm&&game.live.clocks.white===clocks.white&&game.live.clocks.black===clocks.black)return game;
+  live.uci=data.lm;
+  return {...game,live};
+}
 export function gamePosition(game, previous) {
   const moves=(game.moves??'').trim().split(/\s+/).filter(Boolean);
+  if(game.live) {
+    const setup=parseFen(game.live.fen).unwrap();
+    return {...boardPosition(setup.board),turn:setup.turn,moves,last:game.live.last,fen:game.live.fen,initialFen:game.initialFen,variant:game.variant};
+  }
   const rules=lichessRules(game.variant??'standard');
   let pos,last;
   let start=0;
-  if(previous && previous.moves.length<=moves.length && previous.moves.every((m,i)=>moves[i]===m) && previous.initialFen===game.initialFen && previous.variant===game.variant){pos=previous.position.clone();last=previous.last;start=previous.moves.length;}
+  if(previous?.position && previous.moves.length<=moves.length && previous.moves.every((m,i)=>moves[i]===m) && previous.initialFen===game.initialFen && previous.variant===game.variant){pos=previous.position.clone();last=previous.last;start=previous.moves.length;}
   else pos=game.initialFen&&game.initialFen!=='startpos'?setupPosition(rules,parseFen(game.initialFen).unwrap()).unwrap():defaultPosition(rules);
   for(let i=start;i<moves.length;i++) {const move=parseSan(pos,moves[i]);if(!move)throw new Error(`Could not read move ${i+1}.`);last=move;pos.play(move);}
-  const squares=[];for(let i=0;i<64;i++){const piece=pos.board.get(i);squares.push(piece?`${piece.color==='white'?'w':'b'}${({pawn:'P',knight:'N',bishop:'B',rook:'R',queen:'Q',king:'K'})[piece.role]}`:null);}
-  return {squares,turn:pos.turn,moves,last,position:pos,fen:makeFen(pos.toSetup()),initialFen:game.initialFen,variant:game.variant};
+  return {...boardPosition(pos.board),turn:pos.turn,moves,last,position:pos,fen:makeFen(pos.toSetup()),initialFen:game.initialFen,variant:game.variant};
 }
-export function clockValues(game, position) {
+function boardPosition(board) {
+  const squares=[];for(let i=0;i<64;i++){const piece=board.get(i);squares.push(piece?`${piece.color==='white'?'w':'b'}${({pawn:'P',knight:'N',bishop:'B',rook:'R',queen:'Q',king:'K'})[piece.role]}`:null);}
+  return {squares};
+}
+export function clockValues(game, position, now=performance.now()) {
+  if(game.live) {
+    const values={...game.live.clocks};
+    const color=game.live.turn;
+    // Match Lichess's mini-game clocks, including the opening clock pause.
+    const running=color==='white'?!game.live.fen.includes('PPPPPPPP/RNBQKBNR'):!game.live.fen.startsWith('rnbqkbnr/pppppppp');
+    if(isPlaying(game)&&running&&Number.isFinite(values[color]))values[color]-=Math.max(0,now-game.live.receivedAt)/1000;
+    return values;
+  }
   const initial=game.clock?.initial;
   const clocks=game.clocks??[];
   const offset=game.initialFen&&game.initialFen!=='startpos'?(parseFen(game.initialFen).unwrap().turn==='black'?1:0):0;
