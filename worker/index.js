@@ -1,4 +1,4 @@
-const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
+const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'};
 export default {
   async fetch(request) {
     const url = new URL(request.url);
@@ -23,6 +23,7 @@ export default {
     const asset=ASSETS[key];
     if(asset===undefined) return new Response('Not found',{status:404});
     const extension=key.slice(key.lastIndexOf('.'));
-    return new Response(request.method==='HEAD'?null:asset,{headers:{'Content-Type':mime[extension]??'text/plain','X-Content-Type-Options':'nosniff','Referrer-Policy':'strict-origin-when-cross-origin','Cache-Control':'no-cache'}});
+    const body=request.method==='HEAD'?null:typeof asset==='string'?asset:Uint8Array.from(atob(asset.base64),char=>char.charCodeAt(0));
+    return new Response(body,{headers:{'Content-Type':mime[extension]??'text/plain','X-Content-Type-Options':'nosniff','Referrer-Policy':'strict-origin-when-cross-origin','Cache-Control':'no-cache'}});
   }
 };

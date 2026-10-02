@@ -9,7 +9,12 @@ const assets = {};
 async function collect(dir, prefix = '') {
   for (const item of await readdir(dir, { withFileTypes: true })) {
     if (item.isDirectory()) await collect(path.join(dir,item.name), `${prefix}/${item.name}`);
-    else assets[`${prefix}/${item.name}`] = await readFile(path.join(dir,item.name),'utf8');
+    else {
+      const content = await readFile(path.join(dir,item.name));
+      assets[`${prefix}/${item.name}`] = path.extname(item.name)==='.png'
+        ? { base64: content.toString('base64') }
+        : content.toString('utf8');
+    }
   }
 }
 await collect('public');
