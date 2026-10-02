@@ -1,8 +1,8 @@
-import { demoGames, gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTournament } from './model.js';
-import { tournamentInfo, tournamentGames, refreshGames, liveArenas } from './api.js';
+import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTournament } from './model.js';
+import { tournamentInfo, tournamentGames, refreshGames } from './api.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={games:new Map(demoGames.map(g=>[g.id,g])),positions:new Map(),filter:'all',search:'',flipped:new Set(),demo:true,selected:null,tournament:null,info:null,controller:null,loading:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0};
+const state={games:new Map(),positions:new Map(),filter:'all',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0};
 state.completeExport=true;
 const cardCache=new Map();
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
@@ -18,6 +18,8 @@ function cardHtml(game,index,detail=false){
   return `<article class="game-card" data-game-id="${esc(game.id)}"><div class="game-topline"><span class="game-number">${detail?'':`#${index+1}`}</span><span class="game-state${playing?' live':''}">${playing?'<span class="live-dot"></span>Playing':`<span class="result-label">${resultOf(game)}</span>`}</span></div>${playerHtml(game,flipped?'white':'black',pos)}${detail?boardHtml(pos,flipped):`<button class="board-button" data-open="${esc(game.id)}" aria-label="View ${esc(game.players?.white?.user?.name??'White')} versus ${esc(game.players?.black?.user?.name??'Black')}"><div class="board-placeholder"></div></button>`}${playerHtml(game,flipped?'black':'white',pos)}<div class="game-bottomline"><span class="opening-name" title="${esc(game.opening?.name??'')}">${esc(game.opening?.name??prettyVariant(game.variant))}</span><div class="game-bottom-actions"><span>${pos&&pos.moves.length?`${Math.ceil(pos.moves.length/2)}. ${esc(pos.moves.at(-1))}`:'—'}</span><button class="flip-button" data-flip="${esc(game.id)}" aria-label="Flip board" title="Flip board">${flipIcon}</button></div></div></article>`;
 }
 function render(){
+  const loaded=Boolean(state.tournament);
+  for(const id of ['tournament-panel','standings-panel','sidebar-bottom','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
   const all=[...state.games.values()].sort((a,b)=>Number(isPlaying(b))-Number(isPlaying(a))||(b.createdAt??0)-(a.createdAt??0));
   const playing=all.filter(isPlaying).length;
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
@@ -29,7 +31,7 @@ function render(){
     if(cached?.signature!==signature){const template=document.createElement('template');template.innerHTML=cardHtml(game,i);const node=template.content.firstElementChild;if(cached){boardObserver.unobserve(cached.node);cached.node.replaceWith(node);}cached={node,signature};cardCache.set(game.id,cached);boardObserver.observe(node);}
     cached.node.hidden=false;cached.node.style.order=i;if(cached.node.parentNode!==$('game-grid'))$('game-grid').append(cached.node);
   }
-  $('empty-state').hidden=visible.length>0;
+  $('empty-state').hidden=!loaded||visible.length>0;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
   $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;
@@ -54,7 +56,7 @@ function updateInfo(info){
 function prettyVariant(variant){return ({standard:'Standard',chess960:'Chess960',kingOfTheHill:'King of the Hill',threeCheck:'Three-check',racingKings:'Racing Kings',crazyhouse:'Crazyhouse',atomic:'Atomic',horde:'Horde',antichess:'Antichess',fromPosition:'From position'})[variant]??variant??'Standard';}
 function mergeGame(game){if(!game?.id||!game.players)return;const previous=state.games.get(game.id);state.games.set(game.id,{...previous,...game,moves:game.moves??previous?.moves,clocks:game.clocks??previous?.clocks,opening:game.opening??previous?.opening});state.newestCreatedAt=Math.max(state.newestCreatedAt,game.createdAt??0);queueRender();}
 function markUpdated(){setStatus(tourFinished(state.info)?'Finished':'Connected',!tourFinished(state.info));$('update-caption').textContent=state.games.size?'3-move delay':'Waiting for games';$('update-caption').title='Clocks reflect the last available move. Positions update every 15 seconds.';}
-function scheduleUpdates(delay=15000){clearTimeout(state.timer);if(!state.demo)state.timer=setTimeout(()=>{if(document.hidden){scheduleUpdates();return;}void updateTournament();},delay);}
+function scheduleUpdates(delay=15000){clearTimeout(state.timer);if(state.tournament)state.timer=setTimeout(()=>{if(document.hidden){scheduleUpdates();return;}void updateTournament();},delay);}
 function handleError(error){if(error.name==='AbortError')return;showNotice(error.message||'Could not connect to Lichess. Try again.',true);setStatus('Reconnecting');if(error.status===429){state.retryAt=Date.now()+error.retryAfter*1000;scheduleUpdates(error.retryAfter*1000+1000);}else scheduleUpdates(30000);}
 async function loadTournament(value){
   let tournament;try{tournament=parseTournament(value);}catch(error){showNotice(error.message,true);return {ok:false,error:error.message};}
@@ -62,7 +64,7 @@ async function loadTournament(value){
   try {
     let info;try{info=await tournamentInfo(tournament,controller.signal);}catch(error){if(error.status!==404||tournament.type==='swiss')throw error;tournament={...tournament,type:'swiss'};info=await tournamentInfo(tournament,controller.signal);}
     if(controller.signal.aborted)return {ok:false};
-    state.tournament=tournament;state.demo=false;state.games.clear();state.positions.clear();state.flipped.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.completeExport=false;state.selected=null;$('game-dialog').close();$('demo-notice').hidden=true;$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
+    state.tournament=tournament;state.games.clear();state.positions.clear();state.flipped.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
     history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
     setStatus('Loading games…');
     await tournamentGames(tournament,controller.signal,mergeGame);
@@ -72,7 +74,7 @@ async function loadTournament(value){
   finally{if(state.controller===controller){state.busy=false;$('watch-button').disabled=false;}}
 }
 async function updateTournament(){
-  if(state.demo||state.busy||!state.tournament)return;if(Date.now()<state.retryAt){scheduleUpdates(state.retryAt-Date.now()+1000);return;}
+  if(state.busy||!state.tournament)return;if(Date.now()<state.retryAt){scheduleUpdates(state.retryAt-Date.now()+1000);return;}
   state.busy=true;$('refresh-button').disabled=true;const controller=state.controller;
   try{
     const previousInfo=state.info;const info=await tournamentInfo(state.tournament,controller.signal);if(controller.signal.aborted)return;updateInfo(info);
@@ -93,7 +95,7 @@ async function updateTournament(){
   }catch(error){state.loading=false;if(!controller.signal.aborted)handleError(error);}
   finally{if(state.controller===controller){state.busy=false;$('refresh-button').disabled=false;}}
 }
-function renderDialog(){const g=state.games.get(state.selected);if(!g)return;const white=g.players.white.user?.name??'White',black=g.players.black.user?.name??'Black';$('dialog-title').textContent=`${white} – ${black}`;$('dialog-content').innerHTML=cardHtml(g,0,true)+`<p class="dialog-note">${state.demo?'Demo position':'Lichess spectator delay: 3 moves. Clocks reflect the last available move.'}</p>${state.demo?'':`<a class="dialog-link" href="https://lichess.org/${esc(g.id)}" target="_blank" rel="noopener">View on Lichess</a>`}`;}
+function renderDialog(){const g=state.games.get(state.selected);if(!g)return;const white=g.players.white.user?.name??'White',black=g.players.black.user?.name??'Black';$('dialog-title').textContent=`${white} – ${black}`;$('dialog-content').innerHTML=cardHtml(g,0,true)+`<p class="dialog-note">Lichess spectator delay: 3 moves. Clocks reflect the last available move.</p><a class="dialog-link" href="https://lichess.org/${esc(g.id)}" target="_blank" rel="noopener">View on Lichess</a>`;}
 document.addEventListener('click',event=>{const flip=event.target.closest('[data-flip]');if(flip){const id=flip.dataset.flip;state.flipped.has(id)?state.flipped.delete(id):state.flipped.add(id);render();return;}const open=event.target.closest('[data-open]');if(open){state.selected=open.dataset.open;renderDialog();$('game-dialog').showModal();}});
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
@@ -102,12 +104,10 @@ document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAt
 $('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{$('game-grid').className=`game-grid ${b.dataset.density}`;document.querySelectorAll('[data-density]').forEach(x=>x.classList.toggle('selected',x===b));}));
 $('theme-button').addEventListener('click',()=>{const light=document.body.classList.toggle('light');$('theme-button').setAttribute('aria-label',light?'Switch to dark theme':'Switch to light theme');$('theme-button').title=light?'Switch to dark theme':'Switch to light theme';});
-$('standings').innerHTML=demoGames.slice(0,5).map((g,i)=>`<li>${g.players.white.user.title?`<span class="player-title">${g.players.white.user.title}</span>`:''}<span class="standing-name">${g.players.white.user.name}</span><span class="standing-points">${28-i*3}</span></li>`).join('');
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
-$('refresh-button').addEventListener('click',()=>{if(state.demo){showNotice('Load a tournament to refresh games.');$('tournament-input').focus();return;}void updateTournament();});
-$('live-arena-button').addEventListener('click',async()=>{const button=$('live-arena-button');button.disabled=true;try{const tournaments=await liveArenas();const current=(tournaments.started??[]).filter(t=>t.variant?.key==='standard'||t.variant==='standard');const choices=current.length?current:tournaments.started??[];const arena=choices.sort((a,b)=>Math.abs((a.nbPlayers??0)-40)-Math.abs((b.nbPlayers??0)-40))[0];if(!arena)throw new Error('No live arenas right now. Paste a tournament link.');await loadTournament(`https://lichess.org/tournament/${arena.id}`);}catch(error){showNotice(error.message,true);}finally{button.disabled=false;}});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!state.demo)scheduleUpdates(1000);});
+$('refresh-button').addEventListener('click',()=>{void updateTournament();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.tournament)scheduleUpdates(1000);});
 window.addEventListener('pagehide',()=>{state.controller?.abort();clearTimeout(state.timer);});
 const parameters=new URLSearchParams(location.search);const initial=parameters.get('swiss')??parameters.get('tournament');if(initial)void loadTournament(`https://lichess.org/${parameters.has('swiss')?'swiss':'tournament'}/${initial}`);
 // Browsers without WebMCP keep the normal interface.

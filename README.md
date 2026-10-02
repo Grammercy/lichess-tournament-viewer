@@ -4,7 +4,7 @@ A minimal Lichess-style board wall for Arena and Swiss tournaments. Paste a tour
 
 Active positions refresh every 15 seconds. Arena pairings are discovered every 30 seconds; Swiss pairings are discovered as rounds and ongoing-game counts change, with a periodic full check. Lichess applies its three-move spectator delay. Clocks show the time recorded at the last available move rather than an invented live countdown. Requests are sequential, respect rate limits, and pause while the tab is hidden.
 
-The initial tournament is clearly marked as a demo. The live-arena button loads a real current tournament. Filters, player search, board size, board flipping, an enlarged game view, and light/dark appearance are available. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
+The viewer opens blank until a tournament is loaded. Filters, player search, board size, board flipping, an enlarged game view, and light/dark appearance are available. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
 
 ## Run locally
 

@@ -7,7 +7,6 @@ async function checked(path,options={}) {
   throw new ApiError(`Could not load Lichess data (${response.status}). Try again.`,response.status);
 }
 export async function tournamentInfo(tournament,signal){return (await checked(`/api/${tournament.type}/${tournament.id}`,{signal})).json();}
-export async function liveArenas(signal){return (await checked('/api/tournament',{signal})).json();}
 export async function readNdjson(response,onItem){
   if(!response.body)throw new ApiError('Lichess returned an empty response.');
   const reader=response.body.getReader();const decoder=new TextDecoder();let pending='';
