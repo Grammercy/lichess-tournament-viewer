@@ -8,3 +8,4 @@
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 .board-placeholder{width:100%;aspect-ratio:1;background:repeating-conic-gradient(var(--brown) 0% 25%,var(--cream) 0% 50%) 0 0/25% 25%}
 .brand img{filter:invert(1)}body.light .brand img{filter:none}
+.no-tournament{min-height:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted)}.no-tournament-icon{width:32px;height:32px;opacity:.7}.no-tournament button{font-size:.875rem;color:inherit;padding:4px 8px}.no-tournament button:hover{color:var(--heading)}

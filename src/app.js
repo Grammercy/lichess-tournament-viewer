@@ -19,6 +19,7 @@ function cardHtml(game,index,detail=false){
 }
 function render(){
   const loaded=Boolean(state.tournament);
+  $('no-tournament').hidden=loaded;
   for(const id of ['tournament-panel','standings-panel','sidebar-bottom','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
   const all=[...state.games.values()].sort((a,b)=>Number(isPlaying(b))-Number(isPlaying(a))||(b.createdAt??0)-(a.createdAt??0));
   const playing=all.filter(isPlaying).length;
@@ -106,6 +107,7 @@ document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click
 $('theme-button').addEventListener('click',()=>{const light=document.body.classList.toggle('light');$('theme-button').setAttribute('aria-label',light?'Switch to dark theme':'Switch to light theme');$('theme-button').title=light?'Switch to dark theme':'Switch to light theme';});
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
+$('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus();});
 $('refresh-button').addEventListener('click',()=>{void updateTournament();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.tournament)scheduleUpdates(1000);});
 window.addEventListener('pagehide',()=>{state.controller?.abort();clearTimeout(state.timer);});
