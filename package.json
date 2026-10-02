@@ -1,0 +1,13 @@
+{
+  "name": "lichess-tournament-viewer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "validate": "node scripts/validate-artifact.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": { "chessops": "^0.15.0" },
+  "devDependencies": { "esbuild": "^0.25.0" }
+}
