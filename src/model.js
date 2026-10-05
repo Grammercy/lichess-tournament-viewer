@@ -14,6 +14,23 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
+export function orderTournamentGames(games, info, type='tournament') {
+  // Lichess's Arena Top Games list is the server-provided duels order.
+  // Beyond those six games, use its average-rating ordering for the board wall.
+  const topGames=new Map((info?.duels??[]).map((duel,index)=>[duel.id,index]));
+  const averageRating=game=>Math.floor(((game.players?.white?.rating??0)+(game.players?.black?.rating??0))/2);
+  return [...games].sort((a,b)=>{
+    const playing=Number(isPlaying(b))-Number(isPlaying(a));
+    if(playing)return playing;
+    if(type==='tournament'&&isPlaying(a)){
+      const topOrder=(topGames.get(a.id)??Infinity)-(topGames.get(b.id)??Infinity);
+      if(topOrder)return topOrder;
+      const rating=averageRating(b)-averageRating(a);
+      if(rating)return rating;
+    }
+    return (b.createdAt??0)-(a.createdAt??0)||a.id.localeCompare(b.id);
+  });
+}
 export function resultOf(game) {return isPlaying(game)?'*':game.winner==='white'?'1–0':game.winner==='black'?'0–1':game.status==='aborted'?'Aborted':'½–½';}
 export function mergeGameData(previous, game) {
   const merged={...previous,...game,moves:game.moves??previous?.moves,clocks:game.clocks??previous?.clocks,opening:game.opening??previous?.opening};

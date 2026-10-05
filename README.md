@@ -4,6 +4,8 @@ A minimal Lichess-style board wall for Arena and Swiss tournaments. Paste a tour
 
 Open the viewer on [ChatGPT Sites](https://lichess-tournament-viewer.aralani.chatgpt.site). Each tournament opens on the Playing tab. Choose All games or Finished to view completed games.
 
+Arena games follow Lichess's Top Games list: the current `duels` appear in the exact order returned by Lichess, followed by the remaining ongoing games by descending average player rating. That order refreshes with tournament information. Completed games stay below ongoing games, newest first; Swiss game ordering is unchanged.
+
 Active boards receive positions, clocks, and results through Lichess's public WebSocket, using the same `fen` and `finish` messages as Lichess's own mini-game boards. Moves render on the next animation frame, and live clocks count down between updates. Each connection watches up to 16 games, with additional connections for larger tournaments. Connections automatically reconnect and restore their subscriptions. They pause while the tab is hidden and resume when it becomes visible.
 
 Arena pairings and standings are discovered every 30 seconds; Swiss pairings are discovered as rounds and ongoing-game counts change, with a periodic full check. Game exports seed the initial boards and supply completed move histories. Those exports have Lichess's three-move API delay for ongoing games, but they never replace a newer streamed board. Export requests are sequential and respect rate limits.
