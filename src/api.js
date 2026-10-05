@@ -6,7 +6,15 @@ async function checked(path,options={}) {
   if(response.status===404)throw new ApiError('Tournament not found. Check the link or ID.',404);
   throw new ApiError(`Could not load Lichess data (${response.status}). Try again.`,response.status);
 }
-export async function tournamentInfo(tournament,signal){return (await checked(`/api/${tournament.type}/${tournament.id}`,{signal})).json();}
+export async function tournamentInfo(tournament,signal){
+  const path=`/api/${tournament.type}/${tournament.id}`;
+  const info=await (await checked(path,{signal})).json();
+  // The info response contains only the first standings page. Fetch every rank.
+  const rankingPlayers=[];
+  const response=await checked(`${path}/results`,{headers:{Accept:'application/x-ndjson'},signal});
+  await readNdjson(response,player=>{rankingPlayers.push(player);});
+  return {...info,rankingPlayers};
+}
 export async function readNdjson(response,onItem){
   if(!response.body)throw new ApiError('Lichess returned an empty response.');
   const reader=response.body.getReader();const decoder=new TextDecoder();let pending='';

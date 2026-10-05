@@ -14,6 +14,18 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
+export function orderTournamentGames(games, info) {
+  const ranks=new Map();
+  for(const player of info?.rankingPlayers??info?.standing?.players??info?.podium??[]){
+    const name=player.username??player.id??player.name??player.user?.id??player.user?.name;
+    if(name&&Number.isInteger(player.rank)&&player.rank>0)ranks.set(name.toLowerCase(),player.rank);
+  }
+  const playerRank=player=>ranks.get((player?.user?.id??player?.user?.name??player?.name??'').toLowerCase())??Number.MAX_SAFE_INTEGER;
+  const bestRank=game=>Math.min(playerRank(game.players?.white),playerRank(game.players?.black));
+  return [...games].sort((a,b)=>bestRank(a)-bestRank(b)
+    ||Number(isPlaying(b))-Number(isPlaying(a))
+    ||(b.createdAt??0)-(a.createdAt??0)||a.id.localeCompare(b.id));
+}
 export function resultOf(game) {return isPlaying(game)?'*':game.winner==='white'?'1–0':game.winner==='black'?'0–1':game.status==='aborted'?'Aborted':'½–½';}
 export function mergeGameData(previous, game) {
   const merged={...previous,...game,moves:game.moves??previous?.moves,clocks:game.clocks??previous?.clocks,opening:game.opening??previous?.opening};
