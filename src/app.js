@@ -1,6 +1,7 @@
 import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTournament, mergeGameData, withLivePosition, orderTournamentGames } from './model.js';
 import { tournamentInfo, tournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
+import { loadTournamentData } from './load.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
@@ -85,13 +86,19 @@ async function loadTournament(value){
   let tournament;try{tournament=parseTournament(value);}catch(error){showNotice(error.message,true);return {ok:false,error:error.message};}
   state.controller?.abort();clearTimeout(state.timer);const controller=new AbortController();state.controller=controller;state.busy=true;state.loading=true;state.pendingLoad=true;$('watch-button').disabled=true;showNotice('');setStatus('Connecting…');render();
   try {
-    let info;try{info=await tournamentInfo(tournament,controller.signal);}catch(error){if(error.status!==404||tournament.type==='swiss')throw error;tournament={...tournament,type:'swiss'};info=await tournamentInfo(tournament,controller.signal);}
+    await loadTournamentData(tournament,controller.signal,{
+      onInfo(info,confirmedTournament){
+        tournament=confirmedTournament;
+        live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.pendingLoad=false;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
+        history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
+        setStatus('Loading games…');
+      },
+      onRankings(rankingPlayers){state.info={...state.info,rankingPlayers};queueRender();},
+      onGame:mergeGame,
+      onGamesComplete(){state.loading=false;state.completeExport=true;state.lastDiscovery=Date.now();render();markUpdated();}
+    });
     if(controller.signal.aborted)return {ok:false};
-    live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.pendingLoad=false;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
-    history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
-    setStatus('Loading games…');
-    await tournamentGames(tournament,controller.signal,mergeGame);
-    state.loading=false;state.completeExport=true;state.lastDiscovery=Date.now();render();markUpdated();scheduleUpdates();
+    render();markUpdated();scheduleUpdates();
     return {ok:true,tournament:tournament.id,games:state.games.size};
   }catch(error){if(controller.signal.aborted)return {ok:false};state.loading=false;state.pendingLoad=false;render();handleError(error);return {ok:false,error:error.message};}
   finally{if(state.controller===controller){state.busy=false;$('watch-button').disabled=false;}}
