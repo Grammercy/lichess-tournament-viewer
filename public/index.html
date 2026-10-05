@@ -43,7 +43,12 @@
           </button>
         </div>
       </div>
-      <section id="game-grid" class="game-grid compact" aria-label="Tournament games"></section>
+      <div id="loading-state" class="loading-state" role="status" aria-live="polite" hidden>
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <h2 id="loading-title">Loading tournament…</h2>
+        <p id="loading-message">Getting tournament details from Lichess.</p>
+      </div>
+      <section id="game-grid" class="game-grid compact" aria-label="Tournament games" aria-busy="false"></section>
       <div id="empty-state" class="empty-state" hidden><img src="/pieces/wN.svg" alt="" width="64" height="64"><h2 id="empty-title">No games to show</h2><p id="empty-message">Try another player or game filter.</p></div>
       <footer class="main-footer" id="main-footer" hidden><span id="visible-caption"></span></footer>
     </main>

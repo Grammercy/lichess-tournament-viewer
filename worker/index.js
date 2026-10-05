@@ -4,7 +4,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/lichess/')) {
       const endpoint = url.pathname.slice('/lichess'.length);
-      const allowed = /^\/api\/(?:tournament(?:\/[A-Za-z0-9]{8}(?:\/games)?)?|swiss\/[A-Za-z0-9]{8}(?:\/games)?|games\/export\/_ids)$/.test(endpoint);
+      const allowed = /^\/api\/(?:tournament(?:\/[A-Za-z0-9]{8}(?:\/(?:games|results))?)?|swiss\/[A-Za-z0-9]{8}(?:\/(?:games|results))?|games\/export\/_ids)$/.test(endpoint);
       if (!allowed || !['GET','POST'].includes(request.method) || (request.method==='POST' && endpoint!=='/api/games/export/_ids')) return new Response('Unsupported endpoint',{status:400});
       let body;
       if(request.method==='POST'){
