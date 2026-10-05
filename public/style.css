@@ -7,6 +7,15 @@
 @media(max-width:420px){.product-name{font-size:.6875rem}.site-header{gap:12px;padding:0 14px}.header-divider{height:20px}.app-shell{padding:18px 14px}.watch-button{font-size:.75rem;padding:0 10px}.watch-button .icon{display:none}.game-grid{gap:10px}.player-title{font-size:.5625rem}.player-clock{min-width:38px;font-size:.6875rem;padding:2px 4px}.player-name{font-size:.6875rem}.game-number,.game-state{font-size:.625rem}.game-topline{padding:8px 7px 4px}.opening-name{max-width:90px}.coordinate{font-size:.5rem}.update-status{display:none}.game-tab{padding:8px 9px;font-size:.75rem}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}.clock-bar::before{transition:none!important}}
 .board-placeholder{width:100%;aspect-ratio:1;background:repeating-conic-gradient(var(--brown) 0% 25%,var(--cream) 0% 50%) 0 0/25% 25%}
+.app-shell.loading-tournament{min-height:calc(100svh - 72px)}
+.loading-tournament main{display:flex;flex-direction:column;min-width:0}
+.loading-state{flex:1;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;text-align:center}
+.loading-spinner{width:36px;height:36px;margin-bottom:20px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:loading-spin .9s linear infinite}
+.loading-state h2{margin:0 0 8px;color:var(--heading);font-size:1.15rem;font-weight:400}
+.loading-state p{margin:0;color:var(--muted);font-size:.8125rem}
+@keyframes loading-spin{to{transform:rotate(360deg)}}
+@media(max-width:780px){.app-shell.loading-tournament{display:flex;flex-direction:column;gap:0;min-height:calc(100svh - 65px)}.loading-tournament .sidebar{align-self:stretch}.loading-tournament main{flex:1}}
+@media(prefers-reduced-motion:reduce){.loading-spinner{animation:none}}
 .clock-bar{height:4px;background:var(--input)}
 .clock-bar::before{content:'';display:block;width:var(--clock-percent);height:100%;background:var(--green);transition:width .2s linear}
 .brand img{filter:invert(1)}body.light .brand img{filter:none}
