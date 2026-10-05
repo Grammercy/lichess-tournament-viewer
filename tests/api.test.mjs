@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readNdjson } from '../src/api.js';
+import { readNdjson, tournamentInfo } from '../src/api.js';
 import worker from '../dist/server/index.js';
 
 test('NDJSON handles split UTF-8 characters, heartbeats, and a final line without newline',async()=>{
@@ -31,4 +31,28 @@ test('Worker serves the Homura PNG without corrupting its bytes',async()=>{
   assert.equal(head.status,200);
   assert.equal(head.headers.get('content-type'),'image/png');
   assert.equal(await head.text(),'');
+});
+
+test('Arena and Swiss load full ranking streams through the permitted proxy and refresh them',async()=>{
+  const originalFetch=globalThis.fetch;
+  const requests=[];
+  let leader='First';
+  globalThis.fetch=async(url,options)=>{
+    if(typeof url==='string'&&url.startsWith('/lichess/'))return worker.fetch(new Request(`https://viewer.example${url}`,options));
+    requests.push({url,accept:options.headers.Accept});
+    if(new URL(url).pathname.endsWith('/results'))return new Response(`{"username":"${leader}","rank":1}\n{"username":"BeyondPageOne","rank":40}\n`,{headers:{'Content-Type':'application/x-ndjson'}});
+    return Response.json({standing:{players:[{name:'First',rank:1}]}});
+  };
+  try{
+    for(const type of ['tournament','swiss']){
+      const signal=new AbortController().signal;
+      const info=await tournamentInfo({type,id:'abcdefgh'},signal);
+      assert.deepEqual(info.rankingPlayers,[{username:'First',rank:1},{username:'BeyondPageOne',rank:40}]);
+      leader='NewLeader';
+      assert.equal((await tournamentInfo({type,id:'abcdefgh'},signal)).rankingPlayers[0].username,'NewLeader');
+      leader='First';
+    }
+    assert.equal(requests.length,8);
+    assert.ok(requests.filter(r=>r.url.includes('/results')).every(r=>r.accept==='application/x-ndjson'));
+  }finally{globalThis.fetch=originalFetch;}
 });
