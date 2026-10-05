@@ -1,4 +1,4 @@
-import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTournament, mergeGameData, withLivePosition } from './model.js';
+import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTournament, mergeGameData, withLivePosition, orderTournamentGames } from './model.js';
 import { tournamentInfo, tournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
 const $=id=>document.getElementById(id);
@@ -29,7 +29,7 @@ function render(){
   $('no-tournament').hidden=loaded;
   for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
   document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab.dataset.filter===state.filter;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});
-  const all=[...state.games.values()].sort((a,b)=>Number(isPlaying(b))-Number(isPlaying(a))||(b.createdAt??0)-(a.createdAt??0));
+  const all=orderTournamentGames(state.games.values(),state.info,state.tournament?.type);
   const playing=all.filter(isPlaying).length;
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
   const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing')===isPlaying(g))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
