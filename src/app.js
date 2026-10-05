@@ -3,7 +3,7 @@ import { tournamentInfo, tournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
+const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
 state.completeExport=true;
 const live=new LiveGames({onPosition:applyLivePosition,onFinish:finishLiveGame,onStatus:updateLiveStatus});
 live.pause(document.hidden);
@@ -27,10 +27,10 @@ function cardHtml(game,index,detail=false){
 }
 function render(){
   live.watch([...state.games.values()].filter(isPlaying).map(game=>game.id));
-  const loaded=Boolean(state.tournament);
+  const loaded=Boolean(state.tournament)||state.pendingLoad;
   document.querySelector('.app-shell').classList.toggle('awaiting-tournament',!loaded);
   $('no-tournament').hidden=loaded;
-  for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded;
+  for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded||state.pendingLoad;
   document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab.dataset.filter===state.filter;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});
   const all=orderTournamentGames(state.games.values(),state.info);
   const playing=all.filter(isPlaying).length;
@@ -43,7 +43,14 @@ function render(){
     if(cached?.signature!==signature){const template=document.createElement('template');template.innerHTML=cardHtml(game,i);const node=template.content.firstElementChild;const drawn=Boolean(cached?.node.querySelector('.board'));if(drawn)node.querySelector('.board-button').innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));if(cached){boardObserver.unobserve(cached.node);cached.node.replaceWith(node);}cached={node,signature};cardCache.set(game.id,cached);if(!drawn)boardObserver.observe(node);}
     cached.node.hidden=false;cached.node.style.order=i;if(cached.node.parentNode!==$('game-grid'))$('game-grid').append(cached.node);
   }
-  $('empty-state').hidden=!loaded||visible.length>0;
+  const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
+  document.querySelector('.app-shell').classList.toggle('loading-tournament',showLoading);
+  $('loading-state').hidden=!showLoading;
+  $('loading-title').textContent=state.pendingLoad?'Loading tournament…':'Loading games…';
+  $('loading-message').textContent=state.pendingLoad?'Getting tournament details from Lichess.':'Waiting for the first game from Lichess.';
+  $('game-grid').hidden=state.pendingLoad;
+  $('game-grid').setAttribute('aria-busy',String(showLoading));
+  $('empty-state').hidden=!loaded||visible.length>0||showLoading;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
   $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;
@@ -76,17 +83,17 @@ function scheduleUpdates(delay=30000){clearTimeout(state.timer);if(state.tournam
 function handleError(error){if(error.name==='AbortError')return;showNotice(error.message||'Could not connect to Lichess. Try again.',true);markUpdated();if(error.status===429){state.retryAt=Date.now()+error.retryAfter*1000;scheduleUpdates(error.retryAfter*1000+1000);}else scheduleUpdates(30000);}
 async function loadTournament(value){
   let tournament;try{tournament=parseTournament(value);}catch(error){showNotice(error.message,true);return {ok:false,error:error.message};}
-  state.controller?.abort();clearTimeout(state.timer);const controller=new AbortController();state.controller=controller;state.busy=true;$('watch-button').disabled=true;showNotice('');setStatus('Connecting…');
+  state.controller?.abort();clearTimeout(state.timer);const controller=new AbortController();state.controller=controller;state.busy=true;state.loading=true;state.pendingLoad=true;$('watch-button').disabled=true;showNotice('');setStatus('Connecting…');render();
   try {
     let info;try{info=await tournamentInfo(tournament,controller.signal);}catch(error){if(error.status!==404||tournament.type==='swiss')throw error;tournament={...tournament,type:'swiss'};info=await tournamentInfo(tournament,controller.signal);}
     if(controller.signal.aborted)return {ok:false};
-    live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
+    live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.loading=true;state.pendingLoad=false;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
     history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
     setStatus('Loading games…');
     await tournamentGames(tournament,controller.signal,mergeGame);
     state.loading=false;state.completeExport=true;state.lastDiscovery=Date.now();render();markUpdated();scheduleUpdates();
     return {ok:true,tournament:tournament.id,games:state.games.size};
-  }catch(error){if(controller.signal.aborted)return {ok:false};state.loading=false;render();handleError(error);return {ok:false,error:error.message};}
+  }catch(error){if(controller.signal.aborted)return {ok:false};state.loading=false;state.pendingLoad=false;render();handleError(error);return {ok:false,error:error.message};}
   finally{if(state.controller===controller){state.busy=false;$('watch-button').disabled=false;}}
 }
 async function updateTournament(){
