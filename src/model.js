@@ -14,22 +14,17 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
-export function orderTournamentGames(games, info, type='tournament') {
-  // Lichess's Arena Top Games list is the server-provided duels order.
-  // Beyond those six games, use its average-rating ordering for the board wall.
-  const topGames=new Map((info?.duels??[]).map((duel,index)=>[duel.id,index]));
-  const averageRating=game=>Math.floor(((game.players?.white?.rating??0)+(game.players?.black?.rating??0))/2);
-  return [...games].sort((a,b)=>{
-    const playing=Number(isPlaying(b))-Number(isPlaying(a));
-    if(playing)return playing;
-    if(type==='tournament'&&isPlaying(a)){
-      const topOrder=(topGames.get(a.id)??Infinity)-(topGames.get(b.id)??Infinity);
-      if(topOrder)return topOrder;
-      const rating=averageRating(b)-averageRating(a);
-      if(rating)return rating;
-    }
-    return (b.createdAt??0)-(a.createdAt??0)||a.id.localeCompare(b.id);
-  });
+export function orderTournamentGames(games, info) {
+  const ranks=new Map();
+  for(const player of info?.rankingPlayers??info?.standing?.players??info?.podium??[]){
+    const name=player.username??player.id??player.name??player.user?.id??player.user?.name;
+    if(name&&Number.isInteger(player.rank)&&player.rank>0)ranks.set(name.toLowerCase(),player.rank);
+  }
+  const playerRank=player=>ranks.get((player?.user?.id??player?.user?.name??player?.name??'').toLowerCase())??Number.MAX_SAFE_INTEGER;
+  const bestRank=game=>Math.min(playerRank(game.players?.white),playerRank(game.players?.black));
+  return [...games].sort((a,b)=>bestRank(a)-bestRank(b)
+    ||Number(isPlaying(b))-Number(isPlaying(a))
+    ||(b.createdAt??0)-(a.createdAt??0)||a.id.localeCompare(b.id));
 }
 export function resultOf(game) {return isPlaying(game)?'*':game.winner==='white'?'1–0':game.winner==='black'?'0–1':game.status==='aborted'?'Aborted':'½–½';}
 export function mergeGameData(previous, game) {
