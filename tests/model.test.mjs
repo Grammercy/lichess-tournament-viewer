@@ -40,6 +40,18 @@ test('a streamed board and clocks take precedence over a delayed move export',()
   assert.deepEqual(clockValues(merged,null,3500),{white:175,black:174.5});
 });
 
+test('metadata waits for an exported or streamed position instead of showing a starting board and clock',()=>{
+  const metadata={status:'started',variant:'standard',clock:{initial:180}};
+  assert.equal(gamePosition(metadata),null);
+  assert.deepEqual(clockValues(metadata),{white:undefined,black:undefined});
+  const exported={...metadata,moves:'e4',clocks:[17500]};
+  assert.equal(gamePosition(exported).squares[28],'wP');
+  assert.deepEqual(clockValues(exported),{white:175,black:180});
+  const live=withLivePosition(metadata,{fen:gamePosition(exported).fen,lm:'e2e4',wc:175,bc:180},1000);
+  assert.equal(gamePosition(live).squares[28],'wP');
+  assert.deepEqual(clockValues(live,null,1000),{white:175,black:180});
+});
+
 test('duplicate cached position messages do not reset the running clock',()=>{
   const game={status:'started',variant:'standard',moves:'e4 e5'};
   const update={fen:gamePosition(game).fen.split(' ').slice(0,2).join(' '),lm:'e7e5',wc:59,bc:58};

@@ -1,3 +1,5 @@
+import { isPlaying } from './model.js';
+
 export class ApiError extends Error { constructor(message,status=0,retryAfter=0){super(message);this.status=status;this.retryAfter=retryAfter;} }
 async function checked(path,options={}) {
   const response=await fetch(`/lichess${path}`,options);
@@ -31,6 +33,17 @@ export async function tournamentGames(tournament,signal,onGame,{metadataOnly=fal
   const query=new URLSearchParams({moves:String(!metadataOnly),clocks:String(!metadataOnly),opening:String(!metadataOnly)});
   const response=await checked(`/api/${tournament.type}/${tournament.id}/games?${query}`,{headers:{Accept:'application/x-ndjson'},signal});
   await readNdjson(response,onGame);
+}
+export async function discoverTournamentGames(tournament,signal,onGame){
+  const ongoing=new Set();
+  // Subscribe to active boards as soon as their metadata arrives. Old move
+  // histories wait until discovery and the active-game export have finished.
+  await tournamentGames(tournament,signal,game=>{
+    if(isPlaying(game)&&typeof game.moves!=='string')ongoing.add(game.id);
+    else ongoing.delete(game.id);
+    return onGame(game);
+  },{metadataOnly:true});
+  await refreshGames([...ongoing],signal,onGame);
 }
 export async function refreshGames(ids,signal,onGame){
   for(let i=0;i<ids.length;i+=300){const response=await checked('/api/games/export/_ids?moves=true&clocks=true&opening=true',{method:'POST',headers:{Accept:'application/x-ndjson','Content-Type':'text/plain'},body:ids.slice(i,i+300).join(','),signal});await readNdjson(response,onGame);}

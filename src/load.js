@@ -1,4 +1,4 @@
-import { tournamentDetails, tournamentRankings, tournamentGames } from './api.js';
+import { tournamentDetails, tournamentRankings, discoverTournamentGames } from './api.js';
 
 // Each attempt owns its streams so cancellation and Swiss fallback cannot mix games.
 export async function loadTournamentData(tournament,signal,callbacks){
@@ -23,7 +23,7 @@ async function loadAttempt(tournament,signal,{onInfo,onRankings,onGame,onGamesCo
     rankings=players;
     if(confirmed&&active())onRankings(players);
   });
-  const gamesRequest=tournamentGames(tournament,controller.signal,game=>{
+  const gamesRequest=discoverTournamentGames(tournament,controller.signal,game=>{
     if(!active())return false;
     if(confirmed)onGame(game);else bufferedGames.push(game);
   }).then(()=>{
