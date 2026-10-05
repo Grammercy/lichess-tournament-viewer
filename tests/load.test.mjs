@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { loadTournamentData } from '../src/load.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-const game=id=>({id,status:'started',players:{white:{user:{name:'White'}},black:{user:{name:'Black'}}}});
+const game=id=>({id,status:'started',moves:'',players:{white:{user:{name:'White'}},black:{user:{name:'Black'}}}});
 
 function harness(t,type='tournament'){
   const originalFetch=globalThis.fetch;
   const requests=[],events=[];
-  globalThis.fetch=(url,{signal})=>new Promise((resolve,reject)=>{
-    const request={path:new URL(url,'https://viewer.example').pathname,signal,reply:resolve};
+  globalThis.fetch=(url,{signal,body})=>new Promise((resolve,reject)=>{
+    const target=new URL(url,'https://viewer.example');
+    const request={path:target.pathname,query:target.searchParams,bodyIds:body,signal,reply:resolve};
     signal.addEventListener('abort',()=>{reject(signal.reason);request.body?.error(signal.reason);},{once:true});
     requests.push(request);
   });
@@ -24,14 +25,66 @@ function harness(t,type='tournament'){
   operation.catch(()=>{});
   t.after(async()=>{controller.abort();await operation.catch(()=>{});globalThis.fetch=originalFetch;});
   const request=(suffix='',kind=type)=>requests.find(item=>item.path===`/lichess/api/${kind}/abcdefgh${suffix}`);
+  const activeExport=()=>requests.find(item=>item.path==='/lichess/api/games/export/_ids');
   function stream(suffix,kind=type){
     const item=request(suffix,kind);
     const body=new ReadableStream({start(controller){item.body=controller;}});
     item.reply(new Response(body));
     return {send:value=>item.body.enqueue(new TextEncoder().encode(`${JSON.stringify(value)}\n`)),end:()=>item.body.close()};
   }
-  return {requests,events,controller,operation,request,stream};
+  return {requests,events,controller,operation,request,stream,activeExport};
 }
+
+test('ongoing metadata displays before the export ends, and only active histories load before completion',async t=>{
+  const h=harness(t,'swiss');
+  const games=h.stream('/games'),rankings=h.stream('/results');
+  h.request().reply(Response.json({name:'Swiss'}));
+  const finished={...game('history1'),status:'mate',moves:undefined};
+  const active={...game('active01'),moves:undefined};
+  games.send(finished);games.send(active);
+  await tick();
+  assert.deepEqual(h.events.map(event=>event.type),['info','game','game']);
+  assert.equal(h.activeExport(),undefined,'history exports wait for discovery to release its reader');
+  assert.equal(h.request('/games').query.get('moves'),'false');
+  assert.equal(h.request('/games').query.get('clocks'),'false');
+  assert.equal(h.request('/games').query.get('opening'),'false');
+  games.end();rankings.end();
+  await tick();
+  assert.equal(h.activeExport().bodyIds,'active01');
+  assert.ok(!h.events.some(event=>event.type==='complete'));
+  h.activeExport().reply(new Response(`${JSON.stringify({...active,moves:'e4',clocks:[18000]})}\n`));
+  await h.operation;
+  assert.deepEqual(h.events.filter(event=>event.type==='game').map(event=>event.game.id),['history1','active01','active01']);
+  assert.equal(h.events.at(-1).type,'complete');
+});
+
+test('switching tournaments cancels active history loading without delivering late data',async t=>{
+  const h=harness(t);
+  const games=h.stream('/games'),rankings=h.stream('/results');
+  h.request().reply(Response.json({name:'Arena'}));
+  games.send({...game('active01'),moves:undefined});games.end();rankings.end();
+  await tick();
+  assert.equal(h.activeExport().bodyIds,'active01');
+  h.controller.abort();
+  h.activeExport().reply(new Response(`${JSON.stringify(game('active01'))}\n`));
+  await assert.rejects(h.operation,{name:'AbortError'});
+  assert.ok(h.requests.every(request=>request.signal.aborted));
+  assert.deepEqual(h.events.filter(event=>event.type==='game').map(event=>event.game.id),['active01']);
+  assert.ok(!h.events.some(event=>event.type==='complete'));
+});
+
+test('an active-history rate limit cancels other loading work and preserves the retry delay',async t=>{
+  const h=harness(t);
+  const games=h.stream('/games');h.stream('/results');
+  h.request().reply(Response.json({name:'Arena'}));
+  games.send({...game('active01'),moves:undefined});games.end();
+  await tick();
+  h.activeExport().reply(new Response(null,{status:429,headers:{'Retry-After':'90'}}));
+  await assert.rejects(h.operation,error=>error.status===429&&error.retryAfter===90);
+  assert.ok(h.requests.every(request=>request.signal.aborted));
+  assert.deepEqual(h.events.filter(event=>event.type==='game').map(event=>event.game.id),['active01']);
+  assert.ok(!h.events.some(event=>event.type==='complete'));
+});
 
 test('details, rankings, and games start together; games display while rankings are pending',async t=>{
   const h=harness(t);

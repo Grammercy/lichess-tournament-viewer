@@ -49,6 +49,7 @@ export function gamePosition(game, previous) {
     const setup=parseFen(game.live.fen).unwrap();
     return {...boardPosition(setup.board),turn:setup.turn,moves,last:game.live.last,fen:game.live.fen,initialFen:game.initialFen,variant:game.variant};
   }
+  if(typeof game.moves!=='string')return null;
   const rules=lichessRules(game.variant??'standard');
   let pos,last;
   let start=0;
@@ -70,6 +71,7 @@ export function clockValues(game, position, now=performance.now()) {
     if(isPlaying(game)&&running&&Number.isFinite(values[color]))values[color]-=Math.max(0,now-game.live.receivedAt)/1000;
     return values;
   }
+  if(typeof game.moves!=='string'&&!game.clocks?.length)return {white:undefined,black:undefined};
   const initial=game.clock?.initial;
   const clocks=game.clocks??[];
   const offset=game.initialFen&&game.initialFen!=='startpos'?(parseFen(game.initialFen).unwrap().turn==='black'?1:0):0;

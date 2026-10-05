@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readNdjson, tournamentInfo } from '../src/api.js';
+import { readNdjson, tournamentInfo, discoverTournamentGames } from '../src/api.js';
 import worker from '../dist/server/index.js';
 
 test('NDJSON handles split UTF-8 characters, heartbeats, and a final line without newline',async()=>{
@@ -54,5 +54,31 @@ test('Arena and Swiss load full ranking streams through the permitted proxy and 
     }
     assert.equal(requests.length,8);
     assert.ok(requests.filter(r=>r.url.includes('/results')).every(r=>r.accept==='application/x-ndjson'));
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('Arena and Swiss discover metadata through the proxy, then export only ongoing histories',async()=>{
+  const originalFetch=globalThis.fetch;
+  const requests=[];
+  const history={id:'history1',status:'mate',players:{}};
+  const active={id:'active01',status:'started',players:{}};
+  globalThis.fetch=async(url,options)=>{
+    if(typeof url==='string'&&url.startsWith('/lichess/'))return worker.fetch(new Request(`https://viewer.example${url}`,options));
+    const target=new URL(url);requests.push({target,body:options.body});
+    const games=target.pathname.endsWith('/games')?[history,active]:[{...active,moves:'e4',clocks:[17500]}];
+    return new Response(games.map(game=>JSON.stringify(game)).join('\n')+'\n');
+  };
+  try{
+    for(const type of ['tournament','swiss']){
+      const games=[];
+      await discoverTournamentGames({type,id:'abcdefgh'},new AbortController().signal,game=>games.push(game));
+      assert.deepEqual(games.map(game=>game.id),['history1','active01','active01']);
+      assert.equal(games.at(-1).moves,'e4');
+    }
+    assert.equal(requests.length,4);
+    for(const request of requests.filter(request=>request.target.pathname.endsWith('/games'))){
+      for(const key of ['moves','clocks','opening'])assert.equal(request.target.searchParams.get(key),'false');
+    }
+    assert.ok(requests.filter(request=>request.target.pathname.endsWith('/export/_ids')).every(request=>request.body==='active01'));
   }finally{globalThis.fetch=originalFetch;}
 });
