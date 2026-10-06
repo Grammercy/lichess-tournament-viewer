@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gamePosition, parseTournament, clockValues, mergeGameData, withLivePosition } from '../src/model.js';
+import { gamePosition, parseTournament, clockValues, formatClock, isPlaying, isPlayingAt, mergeGameData, withLivePosition } from '../src/model.js';
 
 test('accepts Arena, Swiss and bare IDs, and rejects other hosts and routes',()=>{
   assert.deepEqual(parseTournament(' lichess.org/swiss/abcdefgh '),{type:'swiss',id:'abcdefgh'});
@@ -66,6 +66,58 @@ test('live clocks pause before the first moves and after the game finishes',()=>
   const live=withLivePosition(game,update,1000);
   assert.deepEqual(clockValues(live,null,9000),{white:60,black:60});
   assert.deepEqual(clockValues({...live,status:'finished'},null,9000),{white:60,black:60});
+});
+
+test('either running clock clears Playing at zero while retaining the official status',()=>{
+  for(const [moves,color] of [['e4 e5','white'],['e4 e5 Nf3','black']]){
+    const game={status:'started',variant:'standard',moves};
+    const live=withLivePosition(game,{fen:gamePosition(game).fen,wc:color==='white'?1:60,bc:color==='black'?1:60},1000);
+    assert.equal(isPlayingAt(live,1999),true);
+    assert.equal(isPlayingAt(live,2000),false);
+    assert.equal(isPlayingAt(live,3000),false);
+    assert.equal(isPlaying(live),true);
+    assert.equal(live.status,'started');
+    assert.equal(live.winner,undefined);
+  }
+});
+
+test('zero exported or streamed clocks clear Playing, and unknown clocks keep games visible',()=>{
+  for(const clocks of [[0,5900],[5900,0]]){
+    assert.equal(isPlayingAt({status:'started',moves:'e4 e5',clock:{initial:60},clocks},1000),false);
+  }
+  const game={status:'started',moves:'e4 e5'};
+  for(const color of ['white','black']){
+    const live=withLivePosition(game,{fen:gamePosition(game).fen,[color==='white'?'wc':'bc']:0},1000);
+    assert.equal(isPlayingAt(live,1000),false);
+  }
+  assert.equal(isPlayingAt({status:'created'},1000),true);
+  assert.equal(isPlayingAt({status:'started',clock:{initial:60}},1000),true);
+  const unknown=withLivePosition(game,{fen:gamePosition(game).fen},1000);
+  assert.equal(isPlayingAt(unknown,9000),true);
+  assert.equal(isPlayingAt({...game,status:'mate',clock:{initial:60}},1000),false);
+});
+
+test('a clock correction restores Playing, and the official result still takes precedence',()=>{
+  const game={status:'started',variant:'standard',moves:'e4 e5'};
+  const update={fen:gamePosition(game).fen,wc:1,bc:60};
+  const live=withLivePosition(game,update,1000);
+  assert.equal(isPlayingAt(live,2000),false);
+  const delayed=mergeGameData(live,{...game,clock:{initial:60},clocks:[5900,5900]});
+  assert.equal(isPlayingAt(delayed,2000),false);
+  const corrected=withLivePosition(delayed,{...update,wc:3},2000);
+  assert.equal(isPlayingAt(corrected,2000),true);
+  assert.equal(isPlayingAt({...corrected,status:'outoftime',winner:'black'},2000),false);
+});
+
+test('positive fractions never display zero, and paused opening clocks stay in Playing',()=>{
+  assert.equal(formatClock(0.001),'0:01');
+  assert.equal(formatClock(59.1),'1:00');
+  assert.equal(formatClock(0),'0:00');
+  assert.equal(formatClock(-1),'0:00');
+  assert.equal(formatClock(undefined),'—');
+  const game={status:'started',variant:'standard',moves:'e4'};
+  const live=withLivePosition(game,{fen:gamePosition(game).fen,wc:60,bc:1},1000);
+  assert.equal(isPlayingAt(live,9000),true);
 });
 
 test('a delayed export cannot resurrect a streamed result, and a completed export restores full history',()=>{

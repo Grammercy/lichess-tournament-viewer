@@ -1,0 +1,11 @@
+source/__pycache__/
+review/preview.mp4
+draft.mp4
+rebuild/.venv/
+rebuild/__pycache__/
+rebuild/archive/
+rebuild/music-analysis.wav
+rebuild/music-test.wav
+rebuild/draft.mp4
+rebuild/preview.mp4
+rebuild/stills/

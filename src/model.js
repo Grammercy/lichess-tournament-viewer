@@ -14,6 +14,11 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
+// A locally expired clock hides the game while its official result is pending.
+// Keep isPlaying status-based so live updates can correct the clock or finish it.
+export function isPlayingAt(game, now=performance.now()) {
+  return isPlaying(game)&&!Object.values(clockValues(game,null,now)).some(value=>Number.isFinite(value)&&value<=0);
+}
 export function isTournamentFinished(info) { return info?.isFinished===true||info?.status==='finished'; }
 export function orderTournamentGames(games, info) {
   const ranks=new Map();
@@ -80,5 +85,5 @@ export function clockValues(game, position, now=performance.now()) {
   for(let i=Math.max(0,clocks.length-2);i<clocks.length;i++) values[(i+offset)%2?'black':'white']=clocks[i]/100;
   return values;
 }
-export function formatClock(value){if(!Number.isFinite(value))return '—';const sec=Math.max(0,Math.floor(value));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;}
+export function formatClock(value){if(!Number.isFinite(value))return '—';const sec=Math.max(0,Math.ceil(value));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;}
 export function squareName(index){return makeSquare(index);}

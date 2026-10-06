@@ -1,0 +1,15 @@
+Music: I Can Hear Your Heartbeat by Michael Ramir C.
+Source: https://mixkit.co/free-stock-music/pop/
+Item: https://assets.mixkit.co/music/1000/1000.mp3
+Mixkit Stock Music Free License: https://mixkit.co/license/#musicFree
+Edited excerpt, pitch-preserving retiming from 125 to 128 BPM, loudness normalization and fades for this video. Original interface pop sounds added to the video soundtrack.
+
+3D chess: A Beautiful Game by Moeen Sayed and Mujtaba Sayed.
+Original model © 2020 ASWF / MaterialX Project. glTF conversion © 2022 Ed Mackey.
+Source: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ABeautifulGame
+License: Creative Commons Attribution 4.0 International, https://creativecommons.org/licenses/by/4.0/
+Adapted scale, orientation, materials, lighting and animation for the film. Source meshes, texture maps and license included.
+
+Website: https://lichess-tournament-viewer.aralani.chatgpt.site/
+Chess assets: Lichess, https://github.com/lichess-org/lila/blob/master/COPYING.md
+Cburnett pieces: Colin M. L. Burnett, GPL-3.0-or-later. SVG sources and license included.
