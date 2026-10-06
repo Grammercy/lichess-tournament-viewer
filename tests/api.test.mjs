@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readNdjson, tournamentInfo, discoverTournamentGames } from '../src/api.js';
+import { readNdjson, tournamentInfo, discoverTournamentGames, tournamentPgn } from '../src/api.js';
 import worker from '../dist/server/index.js';
 
 test('NDJSON handles split UTF-8 characters, heartbeats, and a final line without newline',async()=>{
@@ -80,5 +80,26 @@ test('Arena and Swiss discover metadata through the proxy, then export only ongo
       for(const key of ['moves','clocks','opening'])assert.equal(request.target.searchParams.get(key),'false');
     }
     assert.ok(requests.filter(request=>request.target.pathname.endsWith('/export/_ids')).every(request=>request.body==='active01'));
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('Arena and Swiss export full PGN with clocks and openings through the public proxy',async()=>{
+  const originalFetch=globalThis.fetch,requests=[];
+  const pgn='[White "White"]\n[Black "Black"]\n[Result "1-0"]\n\n1. e4 e5 1-0\n';
+  globalThis.fetch=async(url,options)=>{
+    if(url.startsWith('/lichess/'))return worker.fetch(new Request(`https://viewer.example${url}`,options));
+    requests.push({url:new URL(url),options});
+    return new Response(pgn,{headers:{'Content-Type':'application/x-chess-pgn'}});
+  };
+  try{
+    for(const type of ['tournament','swiss'])assert.equal(await tournamentPgn({type,id:'abcdefgh'},new AbortController().signal),pgn);
+    assert.equal(requests.length,2);
+    for(const {url,options} of requests){
+      assert.equal(options.headers.Accept,'application/x-chess-pgn');
+      for(const key of ['moves','clocks','opening'])assert.equal(url.searchParams.get(key),'true');
+      assert.equal(url.searchParams.has('player'),false);
+      assert.equal(options.headers.Authorization,undefined);
+    }
+    for(const endpoint of ['/lichess/api/token','/lichess/api/study','/lichess/api/study/abcdefgh/import-pgn'])assert.equal((await worker.fetch(new Request(`https://viewer.example${endpoint}`,{method:'POST',body:'anything'}))).status,400);
   }finally{globalThis.fetch=originalFetch;}
 });

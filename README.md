@@ -6,6 +6,10 @@ Open the viewer on [ChatGPT Sites](https://lichess-tournament-viewer.aralani.cha
 
 A loading screen appears immediately after submitting a tournament and stays visible until the first game in the current filter arrives. If loading finishes without any matching games, the viewer shows the empty state.
 
+After an Arena or Swiss tournament finishes, **Import to study** appears in the game summary. Choose a study name and visibility, sign in with Lichess, then choose **Import all games**. The import downloads every tournament game as PGN, regardless of the current game filter or player search, and preserves moves, tags, custom positions, variants, and clock comments. Each game becomes a chapter. Tournaments with more than Lichess's 64-chapter limit create numbered studies automatically. The import shows progress and links to each study. A partial import can retry the remaining games in the same study; a lost write response asks you to check the studies before starting another import.
+
+Study imports use Lichess OAuth with PKCE and request only `study:write` permission. The pending sign-in and chosen tournament settings use session storage for the redirect. The access token stays in memory and requests go directly to Lichess; the viewer's server never receives the token. Display cookie preferences do not affect sign-in. Reloading the viewer requires signing in again for a new import. Viewing tournaments still requires no account.
+
 Tournament details, full player rankings, and lightweight game discovery start concurrently. Games that arrive before the details are confirmed are buffered, then displayed immediately. Ongoing games subscribe to live updates as soon as they arrive, and their move histories and clocks load before finished-game histories. Finished histories load in background batches of up to 32 games, with pairing discovery taking priority between batches. Boards show "Loading position…" until their position arrives. The grid fills without waiting for the rankings; once those arrive, the cards reorder by tournament rank. Switching tournaments cancels the requests, and an Arena ID that resolves to a Swiss tournament restarts them together.
 
 Games are ordered by the highest-placed tournament participant in each pairing: a game with #1 comes before a game whose best participant is #2. Arena and Swiss use the full tournament results stream to include ranks beyond the first standings page, and refresh those ranks with tournament information. This order applies to every game filter. When several games involve the same highest-placed participant, ongoing games come first, then newest games.
@@ -37,7 +41,7 @@ npm test
 npm run validate
 ```
 
-The build produces a Cloudflare-compatible ESM Worker at `dist/server/index.js`. Assets are bundled into the Worker. The API proxy permits only the public Lichess tournament and game-export endpoints used by the viewer. Live positions connect directly to Lichess's `/api/socket` endpoint. No account access is required.
+The build produces a Cloudflare-compatible ESM Worker at `dist/server/index.js`. Assets are bundled into the Worker. The API proxy permits only the public Lichess tournament and game-export endpoints used by the viewer. Live positions connect directly to Lichess's `/api/socket` endpoint. Viewing tournaments requires no account. Study imports authenticate directly with Lichess.
 
 ## Sources and licensing
 

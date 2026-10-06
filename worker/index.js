@@ -14,7 +14,8 @@ export default {
       const query = new URLSearchParams();
       for (const key of ['clocks','opening','moves','page']) if(url.searchParams.has(key)) query.set(key,url.searchParams.get(key));
       try {
-        const response=await fetch(`https://lichess.org${endpoint}?${query}`,{method:request.method,body,headers:{'Accept':request.headers.get('Accept')==='application/x-ndjson'?'application/x-ndjson':'application/json',...(body?{'Content-Type':'text/plain'}:{})},signal:request.signal});
+        const accept=request.headers.get('Accept');
+        const response=await fetch(`https://lichess.org${endpoint}?${query}`,{method:request.method,body,headers:{'Accept':['application/x-ndjson','application/x-chess-pgn'].includes(accept)?accept:'application/json',...(body?{'Content-Type':'text/plain'}:{})},signal:request.signal});
         return new Response(response.body,{status:response.status,headers:{'Content-Type':response.headers.get('Content-Type')??'application/json','Cache-Control':'no-store',...(response.headers.has('Retry-After')?{'Retry-After':response.headers.get('Retry-After')}:{})}});
       } catch { return Response.json({error:'Lichess is temporarily unavailable. Try again shortly.'},{status:502}); }
     }

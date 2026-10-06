@@ -14,6 +14,7 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
+export function isTournamentFinished(info) { return info?.isFinished===true||info?.status==='finished'; }
 export function orderTournamentGames(games, info) {
   const ranks=new Map();
   for(const player of info?.rankingPlayers??info?.standing?.players??info?.podium??[]){

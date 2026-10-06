@@ -34,6 +34,10 @@ export async function tournamentGames(tournament,signal,onGame,{metadataOnly=fal
   const response=await checked(`/api/${tournament.type}/${tournament.id}/games?${query}`,{headers:{Accept:'application/x-ndjson'},signal});
   await readNdjson(response,onGame);
 }
+export async function tournamentPgn(tournament,signal) {
+  const response=await checked(`/api/${tournament.type}/${tournament.id}/games?moves=true&clocks=true&opening=true`,{headers:{Accept:'application/x-chess-pgn'},signal});
+  return response.text();
+}
 export async function discoverTournamentGames(tournament,signal,onGame){
   const ongoing=new Set();
   // Subscribe to active boards as soon as their metadata arrives. Old move
