@@ -32,6 +32,13 @@ function cardHtml(game,index,detail=false){
   const topColor=flipped?'white':'black',bottomColor=flipped?'black':'white';
   return `<article class="game-card" data-game-id="${esc(game.id)}"><div class="game-topline"><span class="game-number">${detail?'':`#${index+1}`}</span>${playing?'':`<span class="game-state"><span class="result-label">${isPlaying(game)?'Result pending':resultOf(game)}</span></span>`}</div>${playerHtml(game,topColor,pos)}${clockBarHtml(game,topColor,pos)}${detail?boardHtml(pos,flipped):`<button class="board-button" data-open="${esc(game.id)}" aria-label="View ${esc(game.players?.white?.user?.name??'White')} versus ${esc(game.players?.black?.user?.name??'Black')}"><div class="board-placeholder"></div></button>`}${clockBarHtml(game,bottomColor,pos)}${playerHtml(game,bottomColor,pos)}<div class="game-bottomline"><span class="opening-name" title="${esc(game.opening?.name??'')}">${esc(game.opening?.name??prettyVariant(game.variant))}</span><div class="game-bottom-actions"><span>${lastMoveLabel(game,pos)}</span><button class="flip-button" data-flip="${esc(game.id)}" aria-label="Flip board" title="Flip board">${flipIcon}</button></div></div></article>`;
 }
+function updateGameTabUnderline(){
+  const tab=document.querySelector('.game-tab.active');
+  if(!tab?.offsetWidth)return;
+  const tabs=tab.parentElement,rect=tab.getBoundingClientRect();
+  tabs.style.setProperty('--tab-left',`${rect.left-tabs.getBoundingClientRect().left}px`);
+  tabs.style.setProperty('--tab-width',`${rect.width}px`);
+}
 function render(){
   const active=[...state.games.values()].filter(isPlaying);
   live.watch(active.map(game=>game.id));
@@ -46,6 +53,7 @@ function render(){
   const playing=state.playingIds.size;
   studyImport.update({tournament:state.tournament,info:state.info,pendingLoad:state.pendingLoad,loading:state.loading,completeExport:state.completeExport,gameCount:all.length,playing:active.length});
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
+  updateGameTabUnderline();
   const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing')===state.playingIds.has(g.id))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
   const visibleIds=new Set(visible.map(g=>g.id));
   for(const [id,cached] of cardCache) {if(!state.games.has(id)){boardObserver.unobserve(cached.node);cached.node.remove();cardCache.delete(id);}else cached.node.hidden=!visibleIds.has(id);}
@@ -162,6 +170,8 @@ document.addEventListener('click',event=>{const flip=event.target.closest('[data
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
+window.addEventListener('resize',updateGameTabUnderline);
+document.fonts?.ready.then(updateGameTabUnderline);
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
 $('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>displaySettings.set('density',b.dataset.density)));

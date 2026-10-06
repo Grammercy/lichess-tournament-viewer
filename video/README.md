@@ -1,6 +1,6 @@
 # Lichess tournament viewer pop film
 
-`lichess-tournament-viewer-pop.mp4` is the revised master. It is 15.000 seconds,
+`lichess-tournament-viewer-pop-slide.mp4` is the revised master. It is 15.000 seconds,
 1920 × 1080, 60 fps, with H.264 video and stereo AAC audio at 48 kHz.
 
 The opening uses individually authored, carved marble chess meshes from
@@ -9,7 +9,8 @@ The knight moves and the board's 64 squares turn over to reveal recorded live
 play on the hosted viewer.
 
 At 3–4 seconds, the status control lifts out of the fixed interface with a
-green outline. Its selection changes to Finished, then a radial highlight
+green outline. The green selection underline slides from Playing to Finished with a small
+overshoot and damped bounce. Label emphasis fades across, then a radial highlight
 wave updates the tournament and game grid. The captured Finished view is
 from the same Hourly SuperBlitz Arena as the live footage.
 

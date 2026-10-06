@@ -24,6 +24,27 @@ def window(t,a,b):
     # Quarter beats align the small moves with hats; large arrivals hit kicks.
     a=round(a/(BEAT/4))*(BEAT/4);b=round(b/(BEAT/4))*(BEAT/4)
     return float(smooth((t-a)/max(b-a,BEAT/4)))
+def selection_spring(t,start=7*BEAT,duration=.75*BEAT):
+    # A finite damped spring: the first overshoot lands on the next quarter beat.
+    p=(t-start)/duration
+    if p<=0:return 0.
+    if p>=1:return 1.
+    damping=.65;root=math.sqrt(1-damping*damping);frequency=3*math.pi/root
+    response=1-math.exp(-damping*frequency*p)*(math.cos(frequency*root*p)+damping/root*math.sin(frequency*root*p))
+    return 1+(response-1)*(1-float(smooth((p-.84)/.16)))
+
+def selection_state(t):
+    start=7*BEAT;duration=.75*BEAT
+    trailing=selection_spring(t,start,duration)
+    leading=min(1.,selection_spring(t,start,duration*.94))
+    # Lead slightly with the right edge. The trailing edge compresses on overshoot.
+    left=float(lerp(394/1014,674/1014,trailing))
+    right=float(lerp(688/1014,1010/1014,leading))
+    align=1-window(t,3.90,4.20)
+    shift=35/147*align
+    center=135/147-shift
+    return (left,right,center,6/147),window(t,3.34,3.57),shift
+
 def lerp(a,b,p):return np.asarray(a)*(1-p)+np.asarray(b)*p
 def tr(x=0,y=0,z=0):
     m=np.eye(4,dtype='f4');m[:3,3]=[x,y,z];return m
@@ -56,6 +77,7 @@ in vec3 pos;in vec3 normal;in vec2 uv;in vec4 lightpos;
 uniform vec3 color;uniform vec3 eye;uniform float opacity;uniform float metallic;
 uniform sampler2D image;uniform sampler2D shadow;uniform sampler2D normalmap;uniform sampler2D roughmap;uniform sampler2D alternate;uniform vec4 rect;
 uniform float waveRadius;uniform vec2 waveOrigin;
+uniform vec4 selectionBar;uniform float selectionMix;uniform float selectionShift;
 uniform int mode;uniform float lightTheme;uniform float roundness;uniform vec2 aspect;
 out vec4 frag;
 float visibility(vec3 n,vec3 l){
@@ -71,6 +93,20 @@ void main(){
  if(length(max(q,0.))+min(max(q.x,q.y),0.)>roundness)discard;
  vec2 tuv=rect.xy+vec2(uv.x,1.-uv.y)*rect.zw;
  vec4 tex=texture(image,mode==2?uv:tuv);
+ if(mode==5){
+   vec2 newuv=vec2(tuv.x,clamp(tuv.y+selectionShift,0.,1.));
+   vec3 oldc=tex.rgb,newc=texture(alternate,newuv).rgb;
+   // Remove both captured underlines. Labels keep their captured anti-aliasing.
+   if(tuv.y>.60)oldc=texture(image,vec2(tuv.x,.99)).rgb;
+   if(newuv.y>.77)newc=texture(alternate,vec2(tuv.x,.99)).rgb;
+   vec3 c=mix(oldc,newc,selectionMix);
+   float ax=fwidth(tuv.x),ay=fwidth(tuv.y);
+   float bar=smoothstep(selectionBar.x-ax,selectionBar.x+ax,tuv.x)
+      *(1.-smoothstep(selectionBar.y-ax,selectionBar.y+ax,tuv.x))
+      *(1.-smoothstep(selectionBar.w*.5-ay,selectionBar.w*.5+ay,abs(tuv.y-selectionBar.z)));
+   c=mix(c,vec3(.384,.549,.208),bar);
+   frag=vec4(c,opacity);return;
+ }
  if(mode==4){
    float dist=length((tuv-waveOrigin)*vec2(1.6,1.));
    float changed=1.-smoothstep(waveRadius-.025,waveRadius+.025,dist);
@@ -260,15 +296,15 @@ class Renderer:
         self.text('end-url',['lichess-tournament-viewer.aralani.chatgpt.site'],size=40,width=1700,color='#ddd1bd',weight=FONT)
         self.text('end-sub',['Arena & Swiss  /  Live boards  /  Your themes'],size=30,width=1400,color='#bfb6a5',weight=FONT)
 
-    def add(self,mesh,model,color=CREAM,tex=None,alpha=1,metal=.2,shadow=True,rect=(0,0,1,1),radius=0,aspect=(1,1),material=None,wave=None):
+    def add(self,mesh,model,color=CREAM,tex=None,alpha=1,metal=.2,shadow=True,rect=(0,0,1,1),radius=0,aspect=(1,1),material=None,wave=None,selection=None):
         if alpha<.004:return
-        self.objects.append((mesh,model,np.asarray(color,dtype='f4'),tex,alpha,metal,shadow,rect,radius,aspect,material,wave))
-    def panel(self,model,width,height,tex,alpha=1,frame=True,rect=(0,0,1,1)):
+        self.objects.append((mesh,model,np.asarray(color,dtype='f4'),tex,alpha,metal,shadow,rect,radius,aspect,material,wave,selection))
+    def panel(self,model,width,height,tex,alpha=1,frame=True,rect=(0,0,1,1),selection=None):
         if alpha<.005:return
         if frame:
             self.add('box',model@tr(z=-.10)@sc(width/2+.055,height/2+.055,.115),[.11,.105,.095],alpha=alpha,metal=.7)
             self.add('box',model@tr(z=-.20)@sc(width/2-.04,height/2-.04,.055),[.27,.23,.18],alpha=alpha,metal=.8)
-        self.add('plane',model@tr(z=.021)@sc(width/2,height/2,1),tex=tex,alpha=alpha,shadow=False,rect=rect,radius=.022,aspect=(width,height))
+        self.add('plane',model@tr(z=.021)@sc(width/2,height/2,1),tex=tex,alpha=alpha,shadow=False,rect=rect,radius=.022,aspect=(width,height),selection=selection)
     def words(self,name,x,y,z,width,alpha=1,rotation=0):
         t=self.textures[name];h=width*t.height/t.width
         self.panel(tr(x,y,z)@ry(rotation),width,h,t,alpha=alpha,frame=False)
@@ -375,17 +411,18 @@ class Renderer:
         # 2. Lift only the control. A radial selection wave updates the fixed site.
         if 2.34<t<4.80:
             fade=1-window(t,4.22,4.65)
-            wave=window(t,3.43,4.10)
+            wave=window(t,7.75*BEAT,8.75*BEAT)
             lift=window(t,3.00,3.28)*(1-window(t,3.90,4.20))
             m=tr(0,0,0)
             self.add('box',m@tr(z=-.10)@sc(7.355,4.645,.115),[.11,.105,.095],alpha=fade,metal=.5)
             self.add('plane',m@tr(z=.021)@sc(7.3,4.59,1),color=np.ones(3)*(1-.22*lift*(1-wave)),tex=live,alpha=fade,shadow=False,
-                     aspect=(14.6,9.18),wave=(self.textures['finished-current'],wave*1.45-.045,(465/1440,255/900)))
+                     aspect=(14.6,9.18),wave=(self.textures['finished-current'],wave*1.45-.045,(.444,.26)))
             if lift>0:
                 control=tr(-2.60,1.98,1.65*lift)@rx(-.10*lift)@ry(.025*lift)
                 width=lerp(3.43,5.70,lift);height=width*49/338
-                tex=self.textures['filter-playing'] if t<round(3.43/(BEAT/4))*(BEAT/4) else self.textures['filter-finished']
-                self.panel(control,width,height,tex,fade)
+                bar,mix,shift=selection_state(t)
+                self.panel(control,width,height,self.textures['filter-playing'],fade,
+                           selection=(self.textures['filter-finished'],bar,mix,shift))
                 self.outline(control,width+.08,height+.08,fade*lift)
         # 3. Search isolates one live game. The card carries a physical flip.
         if 4.0<t<6.80:
@@ -479,17 +516,19 @@ class Renderer:
         return light
 
     def draw(self,o,shadow=False):
-        mesh,m,color,tex,a,metal,casts,rect,radius,aspect,material,wave=o
+        mesh,m,color,tex,a,metal,casts,rect,radius,aspect,material,wave,selection=o
         if shadow:
             if not casts or a<.6:return
             self.shprog['model'].write(m.T.astype('f4').tobytes());self.meshes[mesh][1].render();return
         p=self.prog;p['model'].write(m.T.astype('f4').tobytes());p['color'].value=tuple(color);p['opacity']=float(a);p['metallic']=float(metal)
-        p['mode']=4 if wave else (2 if material else (1 if tex is not None else 0));p['rect'].value=rect;p['roundness']=radius;p['aspect'].value=aspect
+        p['mode']=5 if selection else (4 if wave else (2 if material else (1 if tex is not None else 0)));p['rect'].value=rect;p['roundness']=radius;p['aspect'].value=aspect
         if material:
             material[0].use(0);material[1].use(2);material[2].use(3)
         else:(tex or self.white).use(0)
         if wave:
             wave[0].use(4);p['waveRadius']=float(wave[1]);p['waveOrigin'].value=wave[2]
+        if selection:
+            selection[0].use(4);p['selectionBar'].value=selection[1];p['selectionMix']=selection[2];p['selectionShift']=selection[3]
         self.meshes[mesh][0].render()
     def frame(self,t):
         light=self.make_scene(t);c=self.ctx

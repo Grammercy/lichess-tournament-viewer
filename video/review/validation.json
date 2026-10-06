@@ -22,19 +22,30 @@
   ],
   "format": {
     "duration": "15.000000",
-    "size": "10072733"
+    "size": "10050823"
   },
   "bpm": 128,
   "beats": 32,
   "frames_per_beat": 28.125,
   "min_frame_mean_brightness": 13.947337962962964,
-  "review": "Authored glTF chess models; raised outlined filter; radial update wave; same-position board extraction; fixed-anchor panel pops; themes; 3D piece rise; study import.",
+  "review": "Authored glTF chess models; raised outlined filter with spring-driven selection underline; radial update wave; same-position board extraction; fixed-anchor panel pops; themes; 3D piece rise; study import.",
   "extraction_position": "Raul3031\u2013OmarPetare, flipped, identical 16-piece arrangement before and after extraction.",
+  "selection_motion": {
+    "start_seconds": 3.28125,
+    "settled_seconds": 3.6328125,
+    "motion": "finite damped spring, 6.8 percent overshoot, independently animated underline",
+    "wave_start_seconds": 3.6328125
+  },
   "camera_hold_seconds": [
     6.09375,
     7.03125
   ],
   "music": "I Can Hear Your Heartbeat by Michael Ramir C., Mixkit Stock Music Free License",
+  "audio_measurement": {
+    "integrated_lufs": -13.62,
+    "true_peak_db": -1.36,
+    "loudness_range_lu": 1.2
+  },
   "decode_errors": 0,
   "extraction_check": {
     "pieces": 16,
@@ -118,11 +129,6 @@
     "dialog_board_width": 4.43125,
     "camera_hold": true
   },
-  "audio_measurement": {
-    "integrated_lufs": -13.62,
-    "true_peak_db": -1.36,
-    "loudness_range_lu": 1.2
-  },
   "browser_playback": {
     "corruptedFrames": 0,
     "currentTime": 15,
@@ -131,6 +137,14 @@
     "ended": true,
     "error": null,
     "muted": false,
-    "totalFrames": 454
+    "totalFrames": 446
+  },
+  "browser_first_pass": {
+    "duration": 15,
+    "ended": true,
+    "muted": false,
+    "corruptedFrames": 0,
+    "droppedFrames": 7,
+    "totalFrames": 450
   }
 }
