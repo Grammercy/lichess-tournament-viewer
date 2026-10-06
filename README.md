@@ -16,7 +16,9 @@ Arena pairings and standings are discovered every 30 seconds; Swiss pairings are
 
 The viewer starts with a small Homura illustration and a speech bubble prompting you to paste a link, centered in the empty view. The bubble and its text are rendered in HTML and CSS. Clicking the prompt focuses the tournament input. Filters, player search, board size, board flipping, and an enlarged game view are available after loading. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
 
-The header's Theme menu follows [Lichess's theme options](https://github.com/lichess-org/lila/blob/master/ui/dasher/src/theme.ts): Device theme, Light, and Dark, each with an optional background picture and adjustable image opacity. Device theme follows changes to the system appearance. Pictures use the Lichess landscape by default or a custom HTTPS image URL. Preferences are saved locally and shared across tabs.
+The header's Theme dropdown has Appearance, Board, and Pieces tabs with a live, flippable preview. Appearance follows [Lichess's options](https://github.com/lichess-org/lila/blob/master/ui/dasher/src/theme.ts): Device theme, Light, and Dark, with an optional background picture, image opacity, and interface roundness. Pictures use the Lichess landscape by default or a custom HTTPS image URL. The board and piece catalogs include all 25 selectable 2D boards, 19 3D boards, 42 2D piece sets, and 11 3D piece sets from Lichess. Board controls also offer custom square colors, opacity, brightness, contrast, hue, coordinates, move highlights, and board size. Changes apply immediately to existing boards and the enlarged game view.
+
+A cookie notice offers “Save my preferences” or “Use without saving.” Display preferences are stored for one year in the `tv_display` cookie only after accepting; a separate `tv_cookie_choice` cookie remembers the choice. Cookies use `SameSite=Lax`, the root path, and `Secure` on HTTPS. Cookie settings in the dropdown lets visitors change their choice and delete saved preferences. Without saving, settings apply for the current visit. Previously saved local preferences migrate only after accepting. Saved preferences synchronize when another tab gains focus.
 
 ## Run locally
 
@@ -42,6 +44,7 @@ The build produces a Cloudflare-compatible ESM Worker at `dist/server/index.js`.
 - Data: [Lichess API](https://lichess.org/api).
 - Rules and notation: [chessops](https://github.com/niklasf/chessops), GPL-3.0-or-later.
 - Chess pieces: Colin M. L. Burnett’s Cburnett set, from [Lichess](https://github.com/lichess-org/lila/tree/master/public/piece/cburnett), used under GPL-3.0-or-later.
+- Additional board textures and piece sets load from Lichess's asset CDN. Catalogs follow the official [board themes](https://github.com/lichess-org/lila/blob/master/modules/pref/src/main/Theme.scala) and [piece sets](https://github.com/lichess-org/lila/blob/master/modules/pref/src/main/PieceSet.scala), checked on October 5, 2026. Asset credits and individual licenses are listed in [Lichess's copying information](https://github.com/lichess-org/lila/blob/master/COPYING.md).
 - Homura illustration: the user-supplied transparent reference, used without image generation. This third-party character artwork is excluded from the project's code license.
 - This project is distributed under GPL-3.0-or-later. See `LICENSE`.
 

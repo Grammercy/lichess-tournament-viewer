@@ -3,7 +3,8 @@ import { tournamentInfo, discoverTournamentGames, refreshGames } from './api.js'
 import { LiveGames } from './live.js';
 import { loadTournamentData } from './load.js';
 import { initThemeMenu } from './theme.js';
-initThemeMenu();
+import { boardHtml } from './board.js';
+const displaySettings=initThemeMenu();
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,lastInfoUpdate:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
@@ -14,7 +15,6 @@ const cardCache=new Map();
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
 const flipIcon='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 7 3-3 3 3M7 4v13m13 0-3 3-3-3m3 3V7"/></svg>';
 function positionFor(game){if(!game.live&&typeof game.moves!=='string')return {pending:true};const old=state.positions.get(game.id);try{if(old&&old.sourceMoves===game.moves && old.sourceLive===game.live && old.initialFen===game.initialFen && old.variant===game.variant)return old;const pos=gamePosition(game,old);pos.sourceMoves=game.moves;pos.sourceLive=game.live;state.positions.set(game.id,pos);return pos;}catch{return null;}}
-function boardHtml(pos,flipped){if(pos?.pending)return '<div class="position-error">Loading position…</div>';if(!pos)return '<div class="position-error">Position unavailable</div>';let html='<div class="board" aria-hidden="true">';for(let row=0;row<8;row++)for(let col=0;col<8;col++){const rank=flipped?row:7-row,file=flipped?7-col:col,index=rank*8+file;const dark=(rank+file)%2===0;const last=pos.last&&(pos.last.from===index||pos.last.to===index);html+=`<span class="square${dark?' dark':''}${last?' last':''}">${pos.squares[index]?`<img src="/pieces/${pos.squares[index]}.svg" alt="" draggable="false">`:''}${col===0?`<span class="coordinate rank">${rank+1}</span>`:''}${row===7?`<span class="coordinate file">${'abcdefgh'[file]}</span>`:''}</span>`;}return html+'</div>';}
 function clockNow(){return live.status==='connected'?performance.now():state.clockPausedAt;}
 function clockPercent(game,time){const initial=game.clock?.initial??state.info?.clock?.limit;return Number.isFinite(time)&&Number.isFinite(initial)&&initial>0?Math.max(0,Math.min(100,time/initial*100)):0;}
 function clockBarHtml(game,color,pos){const time=clockValues(game,pos,clockNow())[color];return `<div class="clock-bar" data-clock-color="${color}" style="--clock-percent:${clockPercent(game,time)}%" aria-hidden="true"></div>`;}
@@ -144,7 +144,7 @@ $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$(
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
 $('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
-document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{$('game-grid').className=`game-grid ${b.dataset.density}`;document.querySelectorAll('[data-density]').forEach(x=>x.classList.toggle('selected',x===b));}));
+document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>displaySettings.set('density',b.dataset.density)));
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
 $('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus();});
