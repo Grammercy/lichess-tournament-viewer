@@ -50,13 +50,16 @@ function render(){
     cached.node.hidden=false;cached.node.style.order=i;if(cached.node.parentNode!==$('game-grid'))$('game-grid').append(cached.node);
   }
   const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
+  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&playing===0;
   document.querySelector('.app-shell').classList.toggle('loading-tournament',showLoading);
+  document.querySelector('.app-shell').classList.toggle('finished-tournament',showTournamentOver);
+  $('tournament-over').hidden=!showTournamentOver;
   $('loading-state').hidden=!showLoading;
   $('loading-title').textContent=state.pendingLoad?'Loading tournament…':'Loading games…';
   $('loading-message').textContent=state.pendingLoad?'Getting tournament details from Lichess.':'Waiting for the first game from Lichess.';
   $('game-grid').hidden=state.pendingLoad;
   $('game-grid').setAttribute('aria-busy',String(showLoading));
-  $('empty-state').hidden=!loaded||visible.length>0||showLoading;
+  $('empty-state').hidden=!loaded||visible.length>0||showLoading||showTournamentOver;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
   $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;

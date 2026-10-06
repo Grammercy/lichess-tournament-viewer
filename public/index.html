@@ -107,6 +107,15 @@
         <p id="loading-message">Getting tournament details from Lichess.</p>
       </div>
       <section id="game-grid" class="game-grid compact" aria-label="Tournament games" aria-busy="false"></section>
+      <div id="tournament-over" class="tournament-complete" role="status" hidden>
+        <div class="homura-prompt">
+          <img class="homura-icon" src="/homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
+          <div class="prompt-bubble">
+            <span class="prompt-title">The tournament is over.</span>
+            <span class="prompt-hint">This timeline has reached its end. The games are in Finished, if you need to look back.</span>
+          </div>
+        </div>
+      </div>
       <div id="empty-state" class="empty-state" hidden><img src="/pieces/wN.svg" alt="" width="64" height="64"><h2 id="empty-title">No games to show</h2><p id="empty-message">Try another player or game filter.</p></div>
       <footer class="main-footer" id="main-footer" hidden><span id="visible-caption"></span></footer>
     </main>

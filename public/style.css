@@ -141,7 +141,7 @@ body.picture .cookie-notice{background:#262421}body.light.picture .cookie-notice
 :is(.game-card,.summary-strip,.watch-button,.link-input,.search-input,.prompt-bubble,.empty-state,.position-error,.theme-menu,dialog){border-radius:var(--ui-roundness,3px)}
 @media(max-width:420px){.theme-preview-wrap{width:110px}.theme-live-preview{gap:14px}.cookie-notice{left:14px;bottom:14px;max-width:calc(100vw - 28px);padding:14px}.cookie-actions button{font-size:.6875rem;padding:6px}.theme-catalog{gap:5px}.catalog-option{font-size:.5625rem}}
 @media(forced-colors:active){.catalog-option[aria-checked=true]{outline:2px solid Highlight}.theme-dimension input{opacity:1;position:static;width:auto;height:auto}.theme-dimension label{display:flex;align-items:center;padding-left:6px}}
-.app-shell.awaiting-tournament{min-height:calc(100svh - 72px)}
+.app-shell:is(.awaiting-tournament,.finished-tournament){min-height:calc(100svh - 72px)}
 .summary-strip{flex-wrap:wrap}
 .study-import-button{display:flex;align-items:center;justify-content:center;gap:7px;margin-left:auto;padding:7px 12px;border:1px solid var(--border);border-radius:var(--ui-roundness,3px);font-size:.8125rem;color:var(--green-text)}
 .study-import-button:hover{background:var(--raised);border-color:var(--green)}
@@ -162,13 +162,13 @@ body.picture .cookie-notice{background:#262421}body.light.picture .cookie-notice
 #study-import-results span{flex-shrink:0;font-size:.6875rem;color:var(--muted);font-variant-numeric:tabular-nums}
 #study-check-account{margin-top:14px}
 @media(max-width:780px){.study-import-button{flex-basis:100%;margin-left:0;min-height:38px}}
-.awaiting-tournament main{display:flex;flex-direction:column;min-width:0}
-.no-tournament{flex:1;min-height:260px;display:flex;align-items:center;justify-content:center;padding:24px 8px}
+:is(.awaiting-tournament,.finished-tournament) main{display:flex;flex-direction:column;min-width:0}
+.no-tournament,.tournament-complete{flex:1;min-height:260px;display:flex;align-items:center;justify-content:center;padding:24px 8px}
 .homura-prompt{display:flex;align-items:flex-start;justify-content:center;gap:16px;max-width:100%}
 .homura-icon{display:block;width:auto;height:180px;flex-shrink:0;object-fit:contain;user-select:none}
 .prompt-bubble{position:relative;width:228px;min-width:0;margin-top:26px;padding:15px 17px;border:1px solid var(--border);border-radius:6px;background:var(--panel);text-align:left;box-shadow:0 3px 12px #0001}
 .prompt-bubble::before{content:'';position:absolute;left:-6px;top:23px;width:10px;height:10px;background:var(--panel);border-left:1px solid var(--border);border-bottom:1px solid var(--border);transform:rotate(45deg)}
 .prompt-title{display:block;color:var(--heading);font-size:.875rem;font-weight:500;line-height:1.5}
 .prompt-hint{display:block;margin-top:5px;color:var(--muted);font-size:.75rem;line-height:1.6}
-.prompt-bubble:hover,.prompt-bubble:hover::before{border-color:var(--green)}
-@media(max-width:780px){.app-shell.awaiting-tournament{display:flex;flex-direction:column;gap:0;min-height:calc(100svh - 65px)}.awaiting-tournament .sidebar{align-self:stretch}.awaiting-tournament main{flex:1}.homura-prompt{gap:12px}.homura-icon{height:160px}.prompt-bubble{margin-top:22px;padding:14px}}
+button.prompt-bubble:hover,button.prompt-bubble:hover::before{border-color:var(--green)}
+@media(max-width:780px){.app-shell:is(.awaiting-tournament,.finished-tournament){display:flex;flex-direction:column;gap:0;min-height:calc(100svh - 65px)}:is(.awaiting-tournament,.finished-tournament) .sidebar{align-self:stretch}:is(.awaiting-tournament,.finished-tournament) main{flex:1}.homura-prompt{gap:12px}.homura-icon{height:160px}.prompt-bubble{margin-top:22px;padding:14px}}
