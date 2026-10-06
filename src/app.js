@@ -2,6 +2,8 @@ import { gamePosition, clockValues, formatClock, isPlaying, resultOf, parseTourn
 import { tournamentInfo, discoverTournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
 import { loadTournamentData } from './load.js';
+import { initThemeMenu } from './theme.js';
+initThemeMenu();
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state={games:new Map(),positions:new Map(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,lastInfoUpdate:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
@@ -143,7 +145,6 @@ document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click'
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
 $('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{$('game-grid').className=`game-grid ${b.dataset.density}`;document.querySelectorAll('[data-density]').forEach(x=>x.classList.toggle('selected',x===b));}));
-$('theme-button').addEventListener('click',()=>{const light=document.body.classList.toggle('light');$('theme-button').setAttribute('aria-label',light?'Switch to dark theme':'Switch to light theme');$('theme-button').title=light?'Switch to dark theme':'Switch to light theme';});
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
 $('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus();});

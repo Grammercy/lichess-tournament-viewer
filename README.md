@@ -14,7 +14,9 @@ Active boards receive positions, clocks, and results through Lichess's public We
 
 Arena pairings and standings are discovered every 30 seconds; Swiss pairings are discovered as rounds and ongoing-game counts change, with a periodic full check. Game exports seed the initial boards and supply completed move histories. Those exports have Lichess's three-move API delay for ongoing games, but they never replace a newer streamed board. Only one game export runs at a time, and rate-limited requests wait before retrying.
 
-The viewer starts with a small Homura illustration and a speech bubble prompting you to paste a link, centered in the empty view. The bubble and its text are rendered in HTML and CSS. Clicking the prompt focuses the tournament input. Filters, player search, board size, board flipping, an enlarged game view, and light/dark appearance are available after loading. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
+The viewer starts with a small Homura illustration and a speech bubble prompting you to paste a link, centered in the empty view. The bubble and its text are rendered in HTML and CSS. Clicking the prompt focuses the tournament input. Filters, player search, board size, board flipping, and an enlarged game view are available after loading. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
+
+The header's Theme menu follows [Lichess's theme options](https://github.com/lichess-org/lila/blob/master/ui/dasher/src/theme.ts): Device theme, Light, and Dark, each with an optional background picture and adjustable image opacity. Device theme follows changes to the system appearance. Pictures use the Lichess landscape by default or a custom HTTPS image URL. Preferences are saved locally and shared across tabs.
 
 ## Run locally
 

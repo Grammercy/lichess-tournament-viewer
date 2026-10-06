@@ -10,7 +10,30 @@
   <header class="site-header">
     <a class="brand" href="/" aria-label="Tournament View home"><img src="/lichess.svg" alt="" width="36" height="36"><span>lichess<span class="brand-org">.org</span></span></a>
     <div class="header-divider"></div><span class="product-name">Tournament view</span>
-    <div class="header-end"><a href="https://lichess.org/tournament" target="_blank" rel="noopener">Explore tournaments <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></a><button class="icon-button" id="theme-button" title="Switch to light theme" aria-label="Switch to light theme"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.9 13.1A9 9 0 0 1 10.9 3.1 9 9 0 1 0 20.9 13.1Z"/></svg></button></div>
+    <div class="header-end"><a href="https://lichess.org/tournament" target="_blank" rel="noopener">Explore tournaments <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></a>
+      <div class="theme-picker" id="theme-picker">
+        <button class="icon-button theme-button" id="theme-button" type="button" title="Theme" aria-label="Theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="theme-menu"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 1.8-4.2 1.5 1.5 0 0 1 1.1-2.5H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="10" cy="6.5" r=".8"/><circle cx="14.5" cy="6.5" r=".8"/><circle cx="17" cy="10" r=".8"/></svg><span class="theme-button-label">Theme</span><svg class="theme-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+        <section class="theme-menu" id="theme-menu" role="dialog" aria-labelledby="theme-title" hidden>
+          <div class="theme-heading"><h2 id="theme-title">Theme</h2><button class="icon-button" id="close-theme-menu" type="button" aria-label="Close theme menu"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
+          <fieldset class="theme-options"><legend class="visually-hidden">Appearance</legend>
+            <label class="theme-option"><input type="radio" name="theme" value="system"><span class="theme-preview theme-preview-system" aria-hidden="true"></span><span>Device theme</span></label>
+            <label class="theme-option"><input type="radio" name="theme" value="light"><span class="theme-preview theme-preview-light" aria-hidden="true"></span><span>Light</span></label>
+            <label class="theme-option"><input type="radio" name="theme" value="dark" checked><span class="theme-preview theme-preview-dark" aria-hidden="true"></span><span>Dark</span></label>
+          </fieldset>
+          <label class="theme-picture-toggle" for="theme-picture"><span>Background picture</span><input id="theme-picture" type="checkbox" role="switch"></label>
+          <div class="theme-picture-settings" id="theme-picture-settings" hidden>
+            <form id="theme-image-form" class="theme-image-form" novalidate>
+              <label for="theme-image-url">Background image URL</label>
+              <div class="theme-image-input"><input id="theme-image-url" type="url" placeholder="https://…" autocomplete="off" spellcheck="false" maxlength="2048" aria-describedby="theme-image-hint theme-image-error"><button type="submit">Apply</button></div>
+              <p id="theme-image-hint" class="form-hint">Leave empty to use the Lichess landscape.</p>
+              <p id="theme-image-error" class="theme-image-error" role="alert" hidden></p>
+            </form>
+            <label class="theme-opacity-label" for="theme-opacity">Image opacity <output id="theme-opacity-value" for="theme-opacity">100%</output></label>
+            <input id="theme-opacity" class="theme-opacity" type="range" min="5" max="100" value="100" step="1">
+          </div>
+        </section>
+      </div>
+    </div>
   </header>
   <div class="app-shell awaiting-tournament">
     <aside class="sidebar">
