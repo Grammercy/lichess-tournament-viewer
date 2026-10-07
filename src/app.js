@@ -1,11 +1,12 @@
 import { gamePosition, clockValues, formatClock, isPlaying, isPlayingAt, isTournamentFinished, resultOf, parseTournament, mergeGameData, withLivePosition, orderTournamentGames } from './model.js';
 import { tournamentInfo, discoverTournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
+import { PairingStream } from './pairings.js';
 import { loadTournamentData } from './load.js';
 import { initThemeMenu } from './theme.js';
 import { boardHtml } from './board.js';
 import { initStudyImport } from './study-import.js';
-import { shatterGameCard } from './shatter.js';
+import { flipGameSlot } from './card-transition.js';
 const displaySettings=initThemeMenu();
 const studyImport=initStudyImport();
 const $=id=>document.getElementById(id);
@@ -14,9 +15,13 @@ const state={games:new Map(),positions:new Map(),playingIds:new Set(),filter:'pl
 state.completeExport=true;
 state.refreshActiveGames=false;
 state.lastActiveRefresh=0;
+state.discoveryRequested=false;
 const live=new LiveGames({onPosition:applyLivePosition,onFinish:finishLiveGame,onStatus:updateLiveStatus});
+const pairings=new PairingStream({onGame:applyPairingEvent,onRateLimit:retryAt=>{state.retryAt=Math.max(state.retryAt,retryAt);scheduleUpdates(state.retryAt-Date.now()+1000);}});
 live.pause(document.hidden);
-const cardCache=new Map();
+pairings.pause(document.hidden);
+const cardSlots=[];
+let gridContext=null;
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
 const flipIcon='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 7 3-3 3 3M7 4v13m13 0-3 3-3-3m3 3V7"/></svg>';
 function positionFor(game){if(!game.live&&typeof game.moves!=='string')return {pending:true};const old=state.positions.get(game.id);try{if(old&&old.sourceMoves===game.moves && old.sourceLive===game.live && old.initialFen===game.initialFen && old.variant===game.variant)return old;const pos=gamePosition(game,old);pos.sourceMoves=game.moves;pos.sourceLive=game.live;state.positions.set(game.id,pos);return pos;}catch{return null;}}
@@ -40,11 +45,63 @@ function updateGameTabUnderline(){
   tabs.style.setProperty('--tab-left',`${rect.left-tabs.getBoundingClientRect().left}px`);
   tabs.style.setProperty('--tab-width',`${rect.width}px`);
 }
-function clearShatters(){for(const cached of cardCache.values())if(cached.shatter){cached.shatter();cached.shatter=null;cached.node.hidden=true;}}
+function clearSlotTransitions(){for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.node.style.height='';}}
+function updateSlotCard(slot,game,index){
+  const signature=game?JSON.stringify([game,index,state.flipped.has(game.id),state.playingIds.has(game.id)]):null;
+  if(slot.signature===signature)return;
+  const drawn=Boolean(slot.transition||slot.card?.querySelector('.board,.position-error'));
+  if(slot.card)boardObserver.unobserve(slot.card);
+  if(game){
+    const template=document.createElement('template');template.innerHTML=cardHtml(game,index);
+    const card=template.content.firstElementChild;
+    if(drawn)card.querySelector('.board-button').innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));
+    slot.card=card;
+    if(slot.transition)slot.transition.updateCard();
+    else slot.node.replaceChildren(card);
+    if(!drawn)boardObserver.observe(card);
+  }else{slot.card=null;if(!slot.transition)slot.node.replaceChildren();}
+  slot.gameId=game?.id??null;slot.signature=signature;
+}
+function renderGameGrid(games){
+  const context=JSON.stringify([state.tournament?.type,state.tournament?.id,state.filter,state.search]);
+  const reset=gridContext!==context||state.pendingLoad||document.hidden||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  if(reset)clearSlotTransitions();
+  const animate=!reset&&!state.loading&&!state.pendingLoad;
+  gridContext=context;
+  // Finish a wave before applying the latest ordering. Live moves still update
+  // its incoming cards, including the snapshots revealed after the logo pause.
+  if(cardSlots.some(slot=>slot.transition)){
+    for(let i=0;i<cardSlots.length;i++){const slot=cardSlots[i];updateSlotCard(slot,state.games.get(slot.gameId),i);}
+    return true;
+  }
+  let waveIndex=0;
+  const count=Math.max(games.length,cardSlots.length);
+  for(let i=0;i<count;i++){
+    let slot=cardSlots[i];const game=games[i];
+    if(!slot){
+      const node=document.createElement('div');node.className='game-slot';node.dataset.slot=String(i);
+      slot={node,card:null,gameId:null,signature:null,transition:null};cardSlots.push(slot);$('game-grid').append(node);
+    }
+    const changed=slot.gameId!==(game?.id??null);
+    if(animate&&changed&&slot.card){
+      slot.transition=flipGameSlot(slot.node,{
+        delay:waveIndex*80,clearing:!game,getCard:()=>slot.card,
+        onComplete(){slot.transition=null;queueRender();}
+      });
+      if(slot.transition)waveIndex++;
+    }
+    if(!slot.transition)slot.node.style.height='';
+    updateSlotCard(slot,game,i);
+  }
+  const transitioning=cardSlots.some(slot=>slot.transition);
+  if(!transitioning)while(cardSlots.length>games.length){const slot=cardSlots.pop();if(slot.card)boardObserver.unobserve(slot.card);slot.node.remove();}
+  return transitioning;
+}
 function render(){
-  const previousPlaying=state.playingIds;
   const active=[...state.games.values()].filter(isPlaying);
   live.watch(active.map(game=>game.id));
+  const players=state.info?.rankingPlayers??[];
+  pairings.watch(state.pendingLoad||tourFinished(state.info)?[]:players.map(player=>player.username??player.id??player.name??player.user?.id??player.user?.name));
   const loaded=Boolean(state.tournament)||state.pendingLoad;
   document.querySelector('.app-shell').classList.toggle('awaiting-tournament',!loaded);
   $('no-tournament').hidden=loaded;
@@ -58,25 +115,9 @@ function render(){
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
   updateGameTabUnderline();
   const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing')===state.playingIds.has(g.id))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
-  const visibleIds=new Set(visible.map(g=>g.id));
-  for(const [id,cached] of cardCache) {
-    if(!state.games.has(id)){cached.shatter?.();boardObserver.unobserve(cached.node);cached.node.remove();cardCache.delete(id);continue;}
-    const visible=visibleIds.has(id);
-    if(cached.shatter&&(visible||state.filter!=='playing'||state.pendingLoad)){cached.shatter();cached.shatter=null;}
-    const ended=previousPlaying.has(id)&&!state.playingIds.has(id);
-    if(!visible&&!cached.node.hidden&&!cached.shatter&&ended&&state.filter==='playing'&&!state.pendingLoad) {
-      cached.shatter=shatterGameCard(cached.node,()=>{cached.shatter=null;cached.node.hidden=true;queueRender();});
-    }
-    cached.node.hidden=!visible&&!cached.shatter;
-  }
-  for(let i=0;i<visible.length;i++) {
-    const game=visible[i];const signature=JSON.stringify([game,i,state.flipped.has(game.id),state.playingIds.has(game.id)]);let cached=cardCache.get(game.id);
-    if(cached?.signature!==signature){const template=document.createElement('template');template.innerHTML=cardHtml(game,i);const node=template.content.firstElementChild;const drawn=Boolean(cached?.node.querySelector('.board,.position-error'));if(drawn)node.querySelector('.board-button').innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));if(cached){boardObserver.unobserve(cached.node);cached.node.replaceWith(node);}cached={node,signature};cardCache.set(game.id,cached);if(!drawn)boardObserver.observe(node);}
-    cached.node.hidden=false;cached.node.style.order=i;if(cached.node.parentNode!==$('game-grid'))$('game-grid').append(cached.node);
-  }
-  const shattering=[...cardCache.values()].some(cached=>cached.shatter);
+  const transitioning=renderGameGrid(visible);
   const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
-  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!shattering;
+  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!transitioning;
   document.querySelector('.app-shell').classList.toggle('loading-tournament',showLoading);
   document.querySelector('.app-shell').classList.toggle('finished-tournament',showTournamentOver);
   $('tournament-over').hidden=!showTournamentOver;
@@ -85,7 +126,7 @@ function render(){
   $('loading-message').textContent=state.pendingLoad?'Getting tournament details from Lichess.':'Waiting for the first game from Lichess.';
   $('game-grid').hidden=state.pendingLoad;
   $('game-grid').setAttribute('aria-busy',String(showLoading));
-  $('empty-state').hidden=!loaded||visible.length>0||shattering||showLoading||showTournamentOver;
+  $('empty-state').hidden=!loaded||visible.length>0||transitioning||showLoading||showTournamentOver;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
   $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;
@@ -93,7 +134,28 @@ function render(){
 }
 function queueRender(){if(state.renderTimer===null)state.renderTimer=requestAnimationFrame(()=>{state.renderTimer=null;render();});}
 function applyLivePosition(data){const game=state.games.get(data.id);if(!game||!isPlaying(game))return;try{const updated=withLivePosition(game,data);if(updated!==game){state.games.set(game.id,updated);queueRender();}}catch{}}
-function finishLiveGame(data){const game=state.games.get(data.id);if(!game||!isPlaying(game))return;const now=clockNow();const snapshot=game.live?{...game.live,clocks:clockValues(game,null,now),receivedAt:now}:undefined;state.games.set(game.id,{...game,live:snapshot,status:'finished',winner:data.win==='w'?'white':data.win==='b'?'black':undefined});state.finishedToRefresh.add(game.id);queueRender();}
+function finishLiveGame(data){const game=state.games.get(data.id);if(!game||!isPlaying(game))return;const now=clockNow();const snapshot=game.live?{...game.live,clocks:clockValues(game,null,now),receivedAt:now}:undefined;state.games.set(game.id,{...game,live:snapshot,status:'finished',winner:data.win==='w'?'white':data.win==='b'?'black':undefined});state.finishedToRefresh.add(game.id);queueRender();if(!tourFinished(state.info))requestPairingDiscovery();}
+function requestPairingDiscovery(){
+  if(!state.tournament||state.pendingLoad)return;
+  state.discoveryRequested=true;
+  scheduleUpdates(Math.max(0,5000-(Date.now()-state.lastDiscovery),state.retryAt-Date.now()+1000));
+}
+function applyPairingEvent(data){
+  if(!/^[a-zA-Z0-9]{8}$/.test(data?.id??'')||!state.tournament||state.pendingLoad)return;
+  const game=state.games.get(data.id);
+  if(game){
+    if(isPlaying(game)&&data.statusName&&!['created','started'].includes(data.statusName)){
+      const now=clockNow();
+      const snapshot=game.live?{...game.live,clocks:clockValues(game,null,now),receivedAt:now}:undefined;
+      mergeGame({...game,live:snapshot,status:data.statusName,winner:data.winner,moves:undefined,clocks:undefined});
+      if(!tourFinished(state.info))requestPairingDiscovery();
+    }
+    return;
+  }
+  // Player streams also include games outside this tournament. Confirm each
+  // new pairing through the tournament export before adding it to the grid.
+  requestPairingDiscovery();
+}
 function updateLiveStatus(status){const reconnected=state.liveStatus==='reconnecting'&&status==='connected';if(state.liveStatus==='connected'||state.liveStatus==='idle')state.clockPausedAt=performance.now();state.liveStatus=status;if(state.tournament){markUpdated();if(reconnected){state.refreshActiveGames=true;scheduleUpdates(0);}}}
 function renderClocks(){if(document.hidden)return;const now=clockNow();if([...state.games.values()].some(game=>isPlayingAt(game,now)!==state.playingIds.has(game.id)))queueRender();document.querySelectorAll('[data-clock-game]').forEach(element=>{const game=state.games.get(element.dataset.clockGame);const card=element.closest('.game-card');if(!game?.live||card?.hidden)return;const color=element.dataset.clockColor;const value=clockValues(game,null,now)[color];element.textContent=formatClock(value);element.classList.toggle('low',isPlayingAt(game,now)&&value<20);const bar=card?.querySelector(`.clock-bar[data-clock-color="${color}"]`);if(bar)bar.style.setProperty('--clock-percent',`${clockPercent(game,value)}%`);});}
 function showNotice(message,error=false){$('notice').hidden=!message;$('notice').textContent=message;$('notice').classList.toggle('error',error);}
@@ -123,46 +185,60 @@ function mergeGame(game){
 }
 function markUpdated(){const playing=[...state.games.values()].some(isPlaying);const finished=tourFinished(state.info)&&!playing;const connected=playing&&live.status==='connected';setStatus(connected?'Live':state.loading?'Loading games…':finished?'Finished':playing?({connecting:'Connecting…',reconnecting:'Reconnecting…',paused:'Paused'}[live.status]??'Connecting…'):'Connected',connected);}
 function scheduleUpdates(delay=30000){clearTimeout(state.timer);if(state.tournament)state.timer=setTimeout(()=>{if(document.hidden){scheduleUpdates();return;}void updateTournament();},delay);}
-function handleError(error){if(error.name==='AbortError')return;showNotice(error.message||'Could not connect to Lichess. Try again.',true);markUpdated();if(error.status===429){state.retryAt=Date.now()+error.retryAfter*1000;scheduleUpdates(error.retryAfter*1000+1000);}else scheduleUpdates(30000);}
+function handleError(error){if(error.name==='AbortError')return;showNotice(error.message||'Could not connect to Lichess. Try again.',true);markUpdated();if(error.status===429){state.retryAt=Math.max(state.retryAt,Date.now()+Math.max(60,error.retryAfter||60)*1000);pairings.deferUntil(state.retryAt);scheduleUpdates(state.retryAt-Date.now()+1000);}else scheduleUpdates(30000);}
 async function loadTournament(value){
   let tournament;try{tournament=parseTournament(value);}catch(error){showNotice(error.message,true);return {ok:false,error:error.message};}
-  state.controller?.abort();clearTimeout(state.timer);const controller=new AbortController();state.controller=controller;state.busy=true;state.loading=true;state.pendingLoad=true;$('watch-button').disabled=true;showNotice('');setStatus('Connecting…');render();
+  state.controller?.abort();pairings.close();clearTimeout(state.timer);const controller=new AbortController();state.controller=controller;state.busy=true;state.loading=true;state.pendingLoad=true;$('watch-button').disabled=true;showNotice('');setStatus('Connecting…');render();
   try {
     await loadTournamentData(tournament,controller.signal,{
       onInfo(info,confirmedTournament){
         tournament=confirmedTournament;
-        live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.refreshActiveGames=false;state.lastActiveRefresh=0;state.loading=true;state.pendingLoad=false;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
+        live.close();state.tournament=tournament;state.filter='playing';state.games.clear();state.positions.clear();state.flipped.clear();state.finishedToRefresh.clear();state.newestCreatedAt=0;state.retryAt=0;state.refreshActiveGames=false;state.lastActiveRefresh=0;state.discoveryRequested=false;state.loading=true;state.pendingLoad=false;state.completeExport=false;state.selected=null;$('game-dialog').close();$('tournament-input').value=`https://lichess.org/${tournament.type}/${tournament.id}`;$('watch-button').disabled=false;updateInfo(info);render();
         history.replaceState(null,'',`?${new URLSearchParams({[tournament.type]:tournament.id})}`);
         setStatus('Loading games…');
       },
       onRankings(rankingPlayers){state.info={...state.info,rankingPlayers};queueRender();},
       onGame:mergeGame,
-      onGamesComplete(){state.loading=false;state.completeExport=true;state.lastDiscovery=Date.now();render();markUpdated();}
+      onGamesComplete(){state.loading=false;state.completeExport=true;state.lastDiscovery=Date.now();state.lastActiveRefresh=Date.now();render();markUpdated();}
     });
     if(controller.signal.aborted)return {ok:false};
     render();markUpdated();scheduleUpdates(state.finishedToRefresh.size?1000:30000);
     return {ok:true,tournament:tournament.id,games:state.games.size};
   }catch(error){if(controller.signal.aborted)return {ok:false};state.loading=false;state.pendingLoad=false;render();handleError(error);return {ok:false,error:error.message};}
-  finally{if(state.controller===controller){state.busy=false;$('watch-button').disabled=false;if(state.refreshActiveGames)scheduleUpdates(0);}}
+  finally{if(state.controller===controller){state.busy=false;$('watch-button').disabled=false;if(state.refreshActiveGames)scheduleUpdates(0);else if(state.discoveryRequested)requestPairingDiscovery();}}
+}
+function discoverPairings(signal,{full=false}={}){
+  const tournament=state.tournament,boundary=full?0:state.newestCreatedAt;
+  return discoverTournamentGames(tournament,signal,game=>{
+    if(signal.aborted||state.tournament!==tournament)return false;
+    if(tournament.type==='tournament'&&boundary&&game.createdAt<boundary&&state.games.has(game.id))return false;
+    mergeGame(game);
+  },{shouldHydrate:game=>{const current=state.games.get(game.id);return !current?.live&&typeof current?.moves!=='string';}});
 }
 async function updateTournament(){
   if(state.busy||!state.tournament)return;if(Date.now()<state.retryAt){scheduleUpdates(state.retryAt-Date.now()+1000);return;}
   const refreshActive=state.refreshActiveGames;state.refreshActiveGames=false;
+  const requested=state.discoveryRequested&&(refreshActive||Date.now()-state.lastDiscovery>=5000);
+  if(requested)state.discoveryRequested=false;
   state.busy=true;$('refresh-button').disabled=true;const controller=state.controller;let failed=false;
   try{
     const previousInfo=state.info;let info=previousInfo;
-    if(refreshActive||Date.now()-state.lastInfoUpdate>=30000||state.lastDiscovery===0||!state.completeExport){info=await tournamentInfo(state.tournament,controller.signal);if(controller.signal.aborted)return;updateInfo(info);}
-    if(!state.completeExport){state.loading=true;setStatus('Loading games…');await discoverTournamentGames(state.tournament,controller.signal,mergeGame);state.completeExport=true;state.loading=false;state.lastDiscovery=Date.now();}
-    const discover=Date.now()-state.lastDiscovery>=30000||state.games.size===0;
-    if(discover && (!tourFinished(previousInfo)||state.games.size===0)){
-      const boundary=state.newestCreatedAt;
-      const swissChanged=info.round!==previousInfo.round||info.nbOngoing!==previousInfo.nbOngoing||Date.now()-state.lastDiscovery>=120000;
-      if(state.tournament.type==='tournament'||swissChanged||state.games.size===0){await discoverTournamentGames(state.tournament,controller.signal,game=>{if(state.tournament.type==='tournament'&&boundary&&game.createdAt<boundary&&state.games.has(game.id))return false;mergeGame(game);});state.lastDiscovery=Date.now();}
+    // Announced Arena pairings display before slower full ranking exports.
+    let arenaDiscovered=false;
+    if(state.completeExport&&state.tournament.type==='tournament'&&(requested||Date.now()-state.lastDiscovery>=30000||state.games.size===0)&&(!tourFinished(previousInfo)||requested||state.games.size===0)){
+      await discoverPairings(controller.signal);state.lastDiscovery=Date.now();arenaDiscovered=true;
     }
-    // A hidden or disconnected tab can miss finish messages. Re-subscribing
-    // cannot replay them, so confirm every uncompleted game through the API.
-    const recheckActive=refreshActive||tourFinished(info)&&Date.now()-state.lastActiveRefresh>=30000;
-    const activeIds=recheckActive?[...state.games.values()].filter(isPlaying).map(game=>game.id):[];
+    if(refreshActive||Date.now()-state.lastInfoUpdate>=30000||state.lastDiscovery===0||!state.completeExport){info=await tournamentInfo(state.tournament,controller.signal);if(controller.signal.aborted)return;updateInfo(info);}
+    if(!state.completeExport){state.loading=true;setStatus('Loading games…');await discoverPairings(controller.signal,{full:true});state.completeExport=true;state.loading=false;state.lastDiscovery=Date.now();}
+    const discover=!arenaDiscovered&&(requested||Date.now()-state.lastDiscovery>=30000||state.games.size===0);
+    if(discover && (!tourFinished(previousInfo)||requested||state.games.size===0)){
+      const swissChanged=info.round!==previousInfo.round||info.nbOngoing!==previousInfo.nbOngoing||Date.now()-state.lastDiscovery>=120000;
+      if(state.tournament.type==='tournament'||requested||swissChanged||state.games.size===0){await discoverPairings(controller.signal);state.lastDiscovery=Date.now();}
+    }
+    // Re-subscribing cannot replay missed results. Catch up every ongoing game
+    // on reconnect, and periodically confirm games without recent live moves.
+    const recheckActive=refreshActive||Date.now()-state.lastActiveRefresh>=30000;
+    const activeIds=recheckActive?[...state.games.values()].filter(game=>isPlaying(game)&&(refreshActive||tourFinished(info)||!game.live||clockNow()-game.live.receivedAt>=30000)).map(game=>game.id):[];
     const activeSet=new Set(activeIds);
     // Bound background history work so the next pairing check takes priority.
     const pending=[...state.finishedToRefresh];
@@ -175,26 +251,26 @@ async function updateTournament(){
     render();showNotice('');markUpdated();
     if(state.finishedToRefresh.size)scheduleUpdates(1000);
     else if(!tourFinished(info)||[...state.games.values()].some(isPlaying))scheduleUpdates(Math.max(0,30000-(Date.now()-state.lastInfoUpdate)));
-  }catch(error){failed=true;state.loading=false;if(state.controller===controller&&refreshActive)state.refreshActiveGames=true;if(!controller.signal.aborted)handleError(error);}
-  finally{if(state.controller===controller){state.busy=false;$('refresh-button').disabled=false;if(!failed&&state.refreshActiveGames)scheduleUpdates(0);}}
+  }catch(error){failed=true;state.loading=false;if(state.controller===controller){if(refreshActive)state.refreshActiveGames=true;if(requested)state.discoveryRequested=true;}if(!controller.signal.aborted)handleError(error);}
+  finally{if(state.controller===controller){state.busy=false;$('refresh-button').disabled=false;if(!failed){if(state.refreshActiveGames)scheduleUpdates(0);else if(state.discoveryRequested)requestPairingDiscovery();}}}
 }
-function renderDialog(){const g=state.games.get(state.selected);if(!g)return;const white=g.players.white.user?.name??'White',black=g.players.black.user?.name??'Black';$('dialog-title').textContent=`${white} – ${black}`;$('dialog-content').innerHTML=cardHtml(g,0,true)+`<p class="dialog-note">${isPlayingAt(g,clockNow())?'Moves and clocks update live.':isPlaying(g)?'Clock expired. Waiting for the result from Lichess.':'Game finished.'}</p><a class="dialog-link" href="https://lichess.org/${esc(g.id)}" target="_blank" rel="noopener">View on Lichess</a>`;}
+function renderDialog(){const g=state.games.get(state.selected);if(!g)return;const white=g.players.white.user?.name??'White',black=g.players.black.user?.name??'Black';$('dialog-title').textContent=`${white} – ${black}`;$('dialog-content').innerHTML=cardHtml(g,0,true)+`<p class="dialog-note">${isPlaying(g)?'Moves and clocks update live.':'Game finished.'}</p><a class="dialog-link" href="https://lichess.org/${esc(g.id)}" target="_blank" rel="noopener">View on Lichess</a>`;}
 document.addEventListener('click',event=>{const flip=event.target.closest('[data-flip]');if(flip){const id=flip.dataset.flip;state.flipped.has(id)?state.flipped.delete(id):state.flipped.add(id);render();return;}const open=event.target.closest('[data-open]');if(open){state.selected=open.dataset.open;renderDialog();$('game-dialog').showModal();}});
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
-window.addEventListener('resize',()=>{clearShatters();queueRender();updateGameTabUnderline();});
+window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline();});
 document.fonts?.ready.then(updateGameTabUnderline);
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
-$('player-search').addEventListener('input',e=>{clearShatters();state.search=e.target.value.trim().toLowerCase();render();});
-document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>displaySettings.set('density',b.dataset.density)));
+$('player-search').addEventListener('input',e=>{clearSlotTransitions();state.search=e.target.value.trim().toLowerCase();render();});
+document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{clearSlotTransitions();displaySettings.set('density',b.dataset.density);queueRender();}));
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
 $('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus();});
-$('refresh-button').addEventListener('click',()=>{state.lastDiscovery=0;void updateTournament();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)clearShatters();live.pause(document.hidden);if(!document.hidden&&state.tournament){state.refreshActiveGames=true;scheduleUpdates(0);}});
+$('refresh-button').addEventListener('click',()=>{state.lastDiscovery=0;state.discoveryRequested=true;state.refreshActiveGames=true;void updateTournament();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearSlotTransitions();live.pause(document.hidden);pairings.pause(document.hidden);if(!document.hidden&&state.tournament){queueRender();state.discoveryRequested=true;state.refreshActiveGames=true;scheduleUpdates(0);}});
 const clockTimer=setInterval(renderClocks,1000);
-window.addEventListener('pagehide',()=>{clearShatters();state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();});
+window.addEventListener('pagehide',()=>{clearSlotTransitions();state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();pairings.close();});
 async function initializeTournament(){
   const authorization=await studyImport.restoreAuthorization();
   const parameters=new URLSearchParams(location.search),initial=parameters.get('swiss')??parameters.get('tournament');

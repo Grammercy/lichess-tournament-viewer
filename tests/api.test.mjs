@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readNdjson, tournamentInfo, discoverTournamentGames, tournamentPgn } from '../src/api.js';
+import { readNdjson, tournamentInfo, discoverTournamentGames, tournamentPgn, streamPlayerGames } from '../src/api.js';
 import worker from '../dist/server/index.js';
 
 test('NDJSON handles split UTF-8 characters, heartbeats, and a final line without newline',async()=>{
@@ -101,5 +101,36 @@ test('Arena and Swiss export full PGN with clocks and openings through the publi
       assert.equal(options.headers.Authorization,undefined);
     }
     for(const endpoint of ['/lichess/api/token','/lichess/api/study','/lichess/api/study/abcdefgh/import-pgn'])assert.equal((await worker.fetch(new Request(`https://viewer.example${endpoint}`,{method:'POST',body:'anything'}))).status,400);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('a board that receives a live position during metadata discovery needs no history export',async()=>{
+  const originalFetch=globalThis.fetch;const requests=[];const liveIds=new Set();
+  globalThis.fetch=async(url,options)=>{
+    requests.push(url);
+    if(url.includes('/export/_ids')){assert.equal(options.body,'pending1');return new Response('{"id":"pending1","status":"started","players":{},"moves":"e4"}\n');}
+    return new Response(['livegame','pending1'].map(id=>JSON.stringify({id,status:'started',players:{}})).join('\n')+'\n');
+  };
+  try{
+    await discoverTournamentGames({type:'tournament',id:'abcdefgh'},new AbortController().signal,game=>{
+      if(game.id==='pending1')liveIds.add('livegame'); // A socket update arrives before discovery ends.
+    },{shouldHydrate:game=>!liveIds.has(game.id)});
+    assert.equal(requests.length,2);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('the one public player stream connects directly with current games and honors Retry-After',async()=>{
+  const originalFetch=globalThis.fetch;const games=[];let opened=false;
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(url,'https://lichess.org/api/stream/games-by-users?withCurrentGames=true');
+    assert.equal(options.method,'POST');assert.equal(options.body,'alice,bob');
+    assert.equal(options.headers.Authorization,undefined);
+    return new Response('\n{"id":"newgame1","statusName":"started"}\n');
+  };
+  try{
+    await streamPlayerGames(['alice','bob'],new AbortController().signal,game=>games.push(game),()=>{opened=true;});
+    assert.equal(opened,true);assert.equal(games[0].id,'newgame1');
+    globalThis.fetch=async()=>new Response(null,{status:429,headers:{'Retry-After':'90'}});
+    await assert.rejects(streamPlayerGames(['alice','bob'],new AbortController().signal,()=>{}),error=>error.status===429&&error.retryAfter===90);
   }finally{globalThis.fetch=originalFetch;}
 });

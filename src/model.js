@@ -14,11 +14,9 @@ export function parseTournament(value) {
   return {type:match[1],id:match[2]};
 }
 export function isPlaying(game) { return ['created','started'].includes(game.status); }
-// A locally expired clock hides the game while its official result is pending.
-// Keep isPlaying status-based so live updates can correct the clock or finish it.
-export function isPlayingAt(game, now=performance.now()) {
-  return isPlaying(game)&&!Object.values(clockValues(game,null,now)).some(value=>Number.isFinite(value)&&value<=0);
-}
+// Clock estimates can expire while a delayed update or increment is pending.
+// Only a result from Lichess can move a game out of Playing.
+export function isPlayingAt(game) { return isPlaying(game); }
 export function isTournamentFinished(info) { return info?.isFinished===true||info?.status==='finished'; }
 export function orderTournamentGames(games, info) {
   const ranks=new Map();

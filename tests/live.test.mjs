@@ -48,7 +48,7 @@ test('delivers position and result events immediately, including batched events'
   h.live.close();
 });
 
-test('keeps ongoing games on the same socket when other games finish or join',()=>{
+test('recycles only a full socket when replacing games would overflow its cumulative subscriptions',()=>{
   const h=harness();const ids=Array.from({length:33},(_,i)=>gameId(i));
   h.live.watch(ids);h.sockets.forEach(socket=>socket.open());
   const second=h.sockets[1],third=h.sockets[2];
@@ -56,9 +56,25 @@ test('keeps ongoing games on the same socket when other games finish or join',()
   h.live.watch(ids.slice(1));
   assert.equal(second.sent.length,secondMessages);assert.equal(third.sent.length,thirdMessages);
   h.live.watch([...ids.slice(1),gameId(33)]);
-  assert.equal(h.sockets.length,3);assert.ok(watched(h.sockets[0]).includes(gameId(33)));
+  assert.equal(h.sockets.length,4);assert.equal(h.sockets[0].closed,true);
+  h.sockets[3].open();
+  assert.deepEqual(watched(h.sockets[3]),[...ids.slice(1,16),gameId(33)]);
   assert.equal(second.sent.length,secondMessages);assert.equal(third.sent.length,thirdMessages);
   h.live.close();
+});
+
+test('a socket can accumulate up to 16 subscriptions, then reconnects before evicting an active game',()=>{
+  const h=harness();h.live.watch([gameId(1)]);const first=h.sockets[0];first.open();
+  for(let i=2;i<=16;i++)h.live.watch([gameId(1),gameId(i)]);
+  assert.equal(h.sockets.length,1);
+  const staleMessage=first.onmessage;
+  h.live.watch([gameId(1),gameId(17)]);
+  assert.equal(h.sockets.length,2);assert.equal(first.closed,true);
+  staleMessage({data:JSON.stringify({t:'fen',d:{id:gameId(1)}})});
+  assert.equal(h.positions.length,0);
+  h.sockets[1].open();assert.deepEqual(watched(h.sockets[1]),[gameId(1),gameId(17)]);
+  h.sockets[1].receive({t:'fen',d:{id:gameId(1)}});assert.equal(h.positions.length,1);
+  h.live.close();assert.equal(h.scheduled.size,0);
 });
 
 test('reconnects on loss and restores subscriptions, while stale sockets cannot update boards',()=>{

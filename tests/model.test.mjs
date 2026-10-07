@@ -68,42 +68,44 @@ test('live clocks pause before the first moves and after the game finishes',()=>
   assert.deepEqual(clockValues({...live,status:'finished'},null,9000),{white:60,black:60});
 });
 
-test('either running clock clears Playing at zero while retaining the official status',()=>{
+test('an estimated clock expiry keeps either player in Playing until a result arrives',()=>{
   for(const [moves,color] of [['e4 e5','white'],['e4 e5 Nf3','black']]){
     const game={status:'started',variant:'standard',moves};
     const live=withLivePosition(game,{fen:gamePosition(game).fen,wc:color==='white'?1:60,bc:color==='black'?1:60},1000);
     assert.equal(isPlayingAt(live,1999),true);
-    assert.equal(isPlayingAt(live,2000),false);
-    assert.equal(isPlayingAt(live,3000),false);
+    assert.equal(isPlayingAt(live,2000),true);
+    assert.equal(isPlayingAt(live,3000),true);
+    assert.equal(isPlayingAt({...live,status:'outoftime'},3000),false);
     assert.equal(isPlaying(live),true);
     assert.equal(live.status,'started');
     assert.equal(live.winner,undefined);
   }
 });
 
-test('zero exported or streamed clocks clear Playing, and unknown clocks keep games visible',()=>{
+test('zero exported, streamed, and increment-only clocks keep unconfirmed games in Playing',()=>{
   for(const clocks of [[0,5900],[5900,0]]){
-    assert.equal(isPlayingAt({status:'started',moves:'e4 e5',clock:{initial:60},clocks},1000),false);
+    assert.equal(isPlayingAt({status:'started',moves:'e4 e5',clock:{initial:60},clocks},1000),true);
   }
   const game={status:'started',moves:'e4 e5'};
   for(const color of ['white','black']){
     const live=withLivePosition(game,{fen:gamePosition(game).fen,[color==='white'?'wc':'bc']:0},1000);
-    assert.equal(isPlayingAt(live,1000),false);
+    assert.equal(isPlayingAt(live,1000),true);
   }
   assert.equal(isPlayingAt({status:'created'},1000),true);
+  assert.equal(isPlayingAt({status:'started',moves:'',clock:{initial:0,increment:2}},1000),true);
   assert.equal(isPlayingAt({status:'started',clock:{initial:60}},1000),true);
   const unknown=withLivePosition(game,{fen:gamePosition(game).fen},1000);
   assert.equal(isPlayingAt(unknown,9000),true);
   assert.equal(isPlayingAt({...game,status:'mate',clock:{initial:60}},1000),false);
 });
 
-test('a clock correction restores Playing, and the official result still takes precedence',()=>{
+test('clock corrections and delayed exports never remove Playing, and results take precedence',()=>{
   const game={status:'started',variant:'standard',moves:'e4 e5'};
   const update={fen:gamePosition(game).fen,wc:1,bc:60};
   const live=withLivePosition(game,update,1000);
-  assert.equal(isPlayingAt(live,2000),false);
+  assert.equal(isPlayingAt(live,2000),true);
   const delayed=mergeGameData(live,{...game,clock:{initial:60},clocks:[5900,5900]});
-  assert.equal(isPlayingAt(delayed,2000),false);
+  assert.equal(isPlayingAt(delayed,2000),true);
   const corrected=withLivePosition(delayed,{...update,wc:3},2000);
   assert.equal(isPlayingAt(corrected,2000),true);
   assert.equal(isPlayingAt({...corrected,status:'outoftime',winner:'black'},2000),false);

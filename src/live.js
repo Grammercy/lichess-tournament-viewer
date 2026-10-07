@@ -70,10 +70,19 @@ class LivePeer {
   watch(ids) {
     if(ids.length===this.ids.length&&ids.every((id,i)=>id===this.ids[i]))return;
     this.ids=ids;
-    if(this.connected)this.subscribe();
+    if(this.connected){
+      // startWatching adds IDs to a 16-game queue. Removed games still occupy
+      // it, so reuse can silently evict games we still need to watch.
+      if(new Set([...this.subscribedIds,...ids]).size>gamesPerSocket){
+        this.disconnect();
+        this.connect();
+        this.owner.updateStatus();
+      }else this.subscribe();
+    }
   }
   subscribe() {
     this.socket.send(JSON.stringify({t:'startWatching',d:this.ids.join(' ')}));
+    this.ids.forEach(id=>this.subscribedIds.add(id));
   }
   connect() {
     if(this.stopped)return;
@@ -84,6 +93,7 @@ class LivePeer {
         this.clearTimers();
         this.connected=true;
         this.failures=0;
+        this.subscribedIds=new Set();
         this.subscribe();
         this.ping();
         this.owner.updateStatus();

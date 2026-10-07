@@ -3,10 +3,22 @@ import { isPlaying } from './model.js';
 export class ApiError extends Error { constructor(message,status=0,retryAfter=0){super(message);this.status=status;this.retryAfter=retryAfter;} }
 async function checked(path,options={}) {
   const response=await fetch(`/lichess${path}`,options);
+  return checkedResponse(response);
+}
+function checkedResponse(response){
   if(response.ok)return response;
   if(response.status===429)throw new ApiError('Lichess rate limit. Updates will retry shortly.',429,Math.max(60,Number(response.headers.get('Retry-After'))||60));
   if(response.status===404)throw new ApiError('Tournament not found. Check the link or ID.',404);
   throw new ApiError(`Could not load Lichess data (${response.status}). Try again.`,response.status);
+}
+export async function streamPlayerGames(users,signal,onGame,onOpen){
+  // Keep the single long-lived public stream on the visitor's connection.
+  // Proxying it would share Lichess's per-IP stream limit across visitors.
+  const response=checkedResponse(await fetch('https://lichess.org/api/stream/games-by-users?withCurrentGames=true',{
+    method:'POST',headers:{Accept:'application/x-ndjson','Content-Type':'text/plain'},body:users.join(','),signal
+  }));
+  onOpen?.();
+  await readNdjson(response,onGame);
 }
 export async function tournamentDetails(tournament,signal){
   return (await checked(`/api/${tournament.type}/${tournament.id}`,{signal})).json();
@@ -38,16 +50,18 @@ export async function tournamentPgn(tournament,signal) {
   const response=await checked(`/api/${tournament.type}/${tournament.id}/games?moves=true&clocks=true&opening=true`,{headers:{Accept:'application/x-chess-pgn'},signal});
   return response.text();
 }
-export async function discoverTournamentGames(tournament,signal,onGame){
-  const ongoing=new Set();
+export async function discoverTournamentGames(tournament,signal,onGame,{shouldHydrate=()=>true}={}){
+  const ongoing=new Map();
   // Subscribe to active boards as soon as their metadata arrives. Old move
   // histories wait until discovery and the active-game export have finished.
   await tournamentGames(tournament,signal,game=>{
-    if(isPlaying(game)&&typeof game.moves!=='string')ongoing.add(game.id);
+    if(isPlaying(game)&&typeof game.moves!=='string')ongoing.set(game.id,game);
     else ongoing.delete(game.id);
     return onGame(game);
   },{metadataOnly:true});
-  await refreshGames([...ongoing],signal,onGame);
+  // Live positions can arrive during discovery. Do not download histories
+  // again for boards that already have a position.
+  await refreshGames([...ongoing.values()].filter(shouldHydrate).map(game=>game.id),signal,onGame);
 }
 export async function refreshGames(ids,signal,onGame){
   for(let i=0;i<ids.length;i+=300){const response=await checked('/api/games/export/_ids?moves=true&clocks=true&opening=true',{method:'POST',headers:{Accept:'application/x-ndjson','Content-Type':'text/plain'},body:ids.slice(i,i+300).join(','),signal});await readNdjson(response,onGame);}
