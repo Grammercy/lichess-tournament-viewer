@@ -5,6 +5,7 @@ import { loadTournamentData } from './load.js';
 import { initThemeMenu } from './theme.js';
 import { boardHtml } from './board.js';
 import { initStudyImport } from './study-import.js';
+import { shatterGameCard } from './shatter.js';
 const displaySettings=initThemeMenu();
 const studyImport=initStudyImport();
 const $=id=>document.getElementById(id);
@@ -39,7 +40,9 @@ function updateGameTabUnderline(){
   tabs.style.setProperty('--tab-left',`${rect.left-tabs.getBoundingClientRect().left}px`);
   tabs.style.setProperty('--tab-width',`${rect.width}px`);
 }
+function clearShatters(){for(const cached of cardCache.values())if(cached.shatter){cached.shatter();cached.shatter=null;cached.node.hidden=true;}}
 function render(){
+  const previousPlaying=state.playingIds;
   const active=[...state.games.values()].filter(isPlaying);
   live.watch(active.map(game=>game.id));
   const loaded=Boolean(state.tournament)||state.pendingLoad;
@@ -56,14 +59,24 @@ function render(){
   updateGameTabUnderline();
   const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing')===state.playingIds.has(g.id))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
   const visibleIds=new Set(visible.map(g=>g.id));
-  for(const [id,cached] of cardCache) {if(!state.games.has(id)){boardObserver.unobserve(cached.node);cached.node.remove();cardCache.delete(id);}else cached.node.hidden=!visibleIds.has(id);}
+  for(const [id,cached] of cardCache) {
+    if(!state.games.has(id)){cached.shatter?.();boardObserver.unobserve(cached.node);cached.node.remove();cardCache.delete(id);continue;}
+    const visible=visibleIds.has(id);
+    if(cached.shatter&&(visible||state.filter!=='playing'||state.pendingLoad)){cached.shatter();cached.shatter=null;}
+    const ended=previousPlaying.has(id)&&!state.playingIds.has(id);
+    if(!visible&&!cached.node.hidden&&!cached.shatter&&ended&&state.filter==='playing'&&!state.pendingLoad) {
+      cached.shatter=shatterGameCard(cached.node,()=>{cached.shatter=null;cached.node.hidden=true;queueRender();});
+    }
+    cached.node.hidden=!visible&&!cached.shatter;
+  }
   for(let i=0;i<visible.length;i++) {
     const game=visible[i];const signature=JSON.stringify([game,i,state.flipped.has(game.id),state.playingIds.has(game.id)]);let cached=cardCache.get(game.id);
     if(cached?.signature!==signature){const template=document.createElement('template');template.innerHTML=cardHtml(game,i);const node=template.content.firstElementChild;const drawn=Boolean(cached?.node.querySelector('.board,.position-error'));if(drawn)node.querySelector('.board-button').innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));if(cached){boardObserver.unobserve(cached.node);cached.node.replaceWith(node);}cached={node,signature};cardCache.set(game.id,cached);if(!drawn)boardObserver.observe(node);}
     cached.node.hidden=false;cached.node.style.order=i;if(cached.node.parentNode!==$('game-grid'))$('game-grid').append(cached.node);
   }
+  const shattering=[...cardCache.values()].some(cached=>cached.shatter);
   const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
-  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0;
+  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!shattering;
   document.querySelector('.app-shell').classList.toggle('loading-tournament',showLoading);
   document.querySelector('.app-shell').classList.toggle('finished-tournament',showTournamentOver);
   $('tournament-over').hidden=!showTournamentOver;
@@ -72,7 +85,7 @@ function render(){
   $('loading-message').textContent=state.pendingLoad?'Getting tournament details from Lichess.':'Waiting for the first game from Lichess.';
   $('game-grid').hidden=state.pendingLoad;
   $('game-grid').setAttribute('aria-busy',String(showLoading));
-  $('empty-state').hidden=!loaded||visible.length>0||showLoading||showTournamentOver;
+  $('empty-state').hidden=!loaded||visible.length>0||shattering||showLoading||showTournamentOver;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
   $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;
@@ -170,18 +183,18 @@ document.addEventListener('click',event=>{const flip=event.target.closest('[data
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
-window.addEventListener('resize',updateGameTabUnderline);
+window.addEventListener('resize',()=>{clearShatters();queueRender();updateGameTabUnderline();});
 document.fonts?.ready.then(updateGameTabUnderline);
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
-$('player-search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();render();});
+$('player-search').addEventListener('input',e=>{clearShatters();state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>displaySettings.set('density',b.dataset.density)));
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
 $('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus();});
 $('refresh-button').addEventListener('click',()=>{state.lastDiscovery=0;void updateTournament();});
-document.addEventListener('visibilitychange',()=>{live.pause(document.hidden);if(!document.hidden&&state.tournament){state.refreshActiveGames=true;scheduleUpdates(0);}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearShatters();live.pause(document.hidden);if(!document.hidden&&state.tournament){state.refreshActiveGames=true;scheduleUpdates(0);}});
 const clockTimer=setInterval(renderClocks,1000);
-window.addEventListener('pagehide',()=>{state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();});
+window.addEventListener('pagehide',()=>{clearShatters();state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();});
 async function initializeTournament(){
   const authorization=await studyImport.restoreAuthorization();
   const parameters=new URLSearchParams(location.search),initial=parameters.get('swiss')??parameters.get('tournament');

@@ -1,0 +1,25 @@
+{
+  "title": "I Can Hear Your Heartbeat",
+  "artist": "Michael Ramir C.",
+  "source": "https://mixkit.co/free-stock-music/pop/",
+  "download": "https://assets.mixkit.co/music/1000/1000.mp3",
+  "license": "Mixkit Stock Music Free License",
+  "license_url": "https://mixkit.co/license/#musicFree",
+  "source_start_seconds": 23.174688,
+  "source_bpm": 125,
+  "film_bpm": 128,
+  "measured_phase_correction_seconds": 0.112,
+  "atempo": 1.024,
+  "beats": 32,
+  "duration_seconds": 15,
+  "original_interface_sound_events_seconds": [
+    0.46875,
+    3.398438,
+    6.09375,
+    7.03125,
+    7.96875,
+    9.375,
+    13.125
+  ],
+  "distribution": "Music is included only in the finished film. Source archive contains a download recipe, no standalone music."
+}

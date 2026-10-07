@@ -1,0 +1,62 @@
+{
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+    {
+      "codec_name": "h264",
+      "width": 1920,
+      "height": 1080,
+      "pix_fmt": "yuv420p",
+      "avg_frame_rate": "60/1",
+      "duration": "15.000000",
+      "nb_frames": "900"
+    },
+    {
+      "codec_name": "aac",
+      "sample_rate": "48000",
+      "channels": 2,
+      "avg_frame_rate": "0/0",
+      "duration": "15.000000",
+      "nb_frames": "705"
+    }
+  ],
+  "format": {
+    "duration": "15.000000",
+    "size": "2521153"
+  },
+  "audio_measurement": {
+    "integrated_lufs": -13.92,
+    "true_peak_db": -1.78,
+    "loudness_range_lu": 0.7
+  },
+  "min_frame_mean_brightness": 27.08564814814815,
+  "decode_errors": 0,
+  "bpm": 128,
+  "beats": 32,
+  "audio_timing": {
+    "method": "Final AAC audio. Positive bass-envelope derivative, 35-180 Hz, 5ms steps, 23ms tolerance.",
+    "best_phase_seconds": 0.0,
+    "grid_strength_ratio": 1.0
+  },
+  "board_continuity": {
+    "game": "Raul3031 versus OmarPetare",
+    "pieces": 16,
+    "center_pixels": [
+      1220,
+      616
+    ],
+    "lift_seconds": [
+      6.09375,
+      6.4453125
+    ],
+    "camera": "Locked orthographic projection; planar center remains fixed.",
+    "geometry": "Authored glTF meshes; uniform normalization and full-scale emergence."
+  },
+  "selection": {
+    "start_seconds": 3.28125,
+    "settle_seconds": 3.6328125,
+    "motion": "Damped spring with a small overshoot and a finite settle.",
+    "component": "Raised outlined control with perspective tilt; local highlights reach its dependent cards."
+  },
+  "layout_review": "All settings fit in frame. Recorded cards and import dialog remain readable. Chessboard crops retain square proportions."
+}

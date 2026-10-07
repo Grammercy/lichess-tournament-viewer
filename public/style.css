@@ -20,6 +20,15 @@
 .clock-bar::before{content:'';display:block;width:var(--clock-percent);height:100%;background:var(--green);transition:width .2s linear}
 .brand img{filter:invert(1)}body.light .brand img{filter:none}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.game-card-shattering{visibility:hidden;pointer-events:none}
+.game-shatter-layer{position:fixed;inset:0;z-index:20;overflow:hidden;pointer-events:none}
+.game-shatter-burst{position:absolute;perspective:900px}
+.game-shatter-fragment{position:absolute;inset:0;will-change:transform,opacity;animation:game-shatter var(--shard-duration) cubic-bezier(.2,.65,.4,1) var(--shard-delay) both}
+.game-shatter-fragment>.game-card{width:100%;height:100%;content-visibility:visible;contain-intrinsic-size:none;box-shadow:none}
+.game-shatter-cracks{position:absolute;inset:0;width:100%;height:100%;fill:none;stroke:var(--cream);stroke-width:.22;filter:drop-shadow(0 0 3px #fff8);animation:game-shatter-cracks .26s ease-out both}
+@keyframes game-shatter{0%,8%{transform:translate3d(0,0,0) rotate(0deg) rotateX(0deg);opacity:1;filter:brightness(1.15)}65%{opacity:.8}100%{transform:translate3d(var(--shard-x),var(--shard-y),0) rotate(var(--shard-spin)) rotateX(var(--shard-tilt)) scale(.82);opacity:0;filter:brightness(.85)}}
+@keyframes game-shatter-cracks{0%{opacity:0}30%{opacity:.9}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.game-shatter-layer{display:none}.game-shatter-fragment,.game-shatter-cracks{animation:none}}
 .theme-picker{position:relative;flex-shrink:0}
 .theme-button{gap:7px;padding:0 8px;font-size:.8125rem}
 .theme-chevron{width:10px;height:10px;transition:transform .15s}

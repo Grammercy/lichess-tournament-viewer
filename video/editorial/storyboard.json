@@ -1,0 +1,61 @@
+{
+  "duration": 15,
+  "fps": 60,
+  "bpm": 128,
+  "palette": {
+    "charcoal": "#171916",
+    "cream": "#f1eee6",
+    "green": "#629924"
+  },
+  "shots": [
+    {
+      "time": [
+        0,
+        1.875
+      ],
+      "purpose": "Introduce one sculpted ivory knight and the promise Every game. One view."
+    },
+    {
+      "time": [
+        1.875,
+        4.6875
+      ],
+      "purpose": "Two readable recorded live boards, standings, status selection and player search."
+    },
+    {
+      "time": [
+        4.6875,
+        6.09375
+      ],
+      "purpose": "Enlarge the same game, flip the board in its own plane, preview a piece set."
+    },
+    {
+      "time": [
+        6.09375,
+        9.375
+      ],
+      "purpose": "Lift the same position into 3D, swap side controls, change appearance and board colors."
+    },
+    {
+      "time": [
+        9.375,
+        12.65625
+      ],
+      "purpose": "Turn the tournament into study chapters and show the import form clearly."
+    },
+    {
+      "time": [
+        12.65625,
+        15
+      ],
+      "purpose": "Hold the project identity and domain with the opening knight."
+    }
+  ],
+  "rules": [
+    "UI stays facing the viewer.",
+    "No piece geometry is squashed.",
+    "Use component highlights rather than a giant glow ring.",
+    "One board center is fixed through the 3D lift.",
+    "Main typography and active controls stay readable at 1280px playback width."
+  ]
+}
