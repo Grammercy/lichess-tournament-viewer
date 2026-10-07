@@ -44,8 +44,8 @@ test('empty, unfinished and incomplete exports fail before any studies can be cr
   }finally{globalThis.fetch=originalFetch;}
 });
 
-test('OAuth uses PKCE and study-only authorization, validates state and never stores the access token',async()=>{
-  const session=storage(),intent={tournament,name:'Test study',visibility:'private'};
+test('OAuth preserves the player selection, uses PKCE, validates state and never stores the access token',async()=>{
+  const session=storage(),intent={tournament,name:'Test study',visibility:'private',gameIds:['00000000'],expectedCount:2,playerFilter:{player:'josé 0',search:'josé 0',label:'José 0'}};
   const url=new URL(await startStudyAuthorization(intent,{storage:session,origin:'https://viewer.example',pathname:'/'}));
   const pending=JSON.parse([...session.values.values()][0]);
   assert.equal(url.origin,'https://lichess.org');assert.equal(url.pathname,'/oauth');
@@ -86,7 +86,7 @@ test('canceling or expiring OAuth restores the tournament without exchanging a t
   await assert.rejects(startStudyAuthorization({tournament},{storage:{setItem(){throw new Error('blocked');}},origin:'https://viewer.example',pathname:'/'}),/session storage/);
 });
 
-test('imports every game into studies of up to 64 chapters, without exporting a filtered subset',async()=>{
+test('without a player filter, imports every game into studies of up to 64 chapters',async()=>{
   for(const count of [1,64,65,129]){
     const originalFetch=globalThis.fetch,requests=[],imported=[];
     let studyNumber=0;
@@ -120,6 +120,46 @@ test('imports every game into studies of up to 64 chapters, without exporting a 
       await job.run('token',new AbortController().signal);assert.equal(requests.length,priorRequests);
     }finally{globalThis.fetch=originalFetch;}
   }
+});
+
+test('filtered imports split only selected games into studies and retry only their remaining chapters',async()=>{
+  const originalFetch=globalThis.fetch,imports=[],totals=[];
+  let creates=0;
+  globalThis.fetch=async(url,options)=>{
+    if(url.startsWith('/lichess/'))return new Response(pgn(140));
+    if(url.endsWith('/api/study')){creates++;return Response.json({id:`study00${creates}`});}
+    const sites=parsePgn(options.body.get('pgn')).map(game=>game.headers.get('Site'));
+    imports.push({sites,initial:options.body.get('initial')});
+    const count=imports.length===1?2:sites.length;
+    return Response.json({chapters:Array.from({length:count},(_,index)=>({id:String(index)})),error:imports.length===1?'Import interrupted':null});
+  };
+  try{
+    const gameIds=Array.from({length:65},(_,index)=>String(index*2).padStart(8,'0'));
+    const job=new StudyImportJob({tournament,name:'Player games',visibility:'private',expectedCount:140,gameIds});
+    gameIds.push('00000139'); // The running job keeps its original selection.
+    await assert.rejects(job.run('token',new AbortController().signal,progress=>totals.push(progress.total)),/interrupted/);
+    assert.equal(job.games.length,65);assert.equal(job.imported,2);
+    assert.deepEqual(job.studies.map(study=>study.total),[64,1]);
+    await job.run('token',new AbortController().signal,progress=>totals.push(progress.total));
+    assert.equal(creates,2);assert.equal(job.imported,65);assert.ok(totals.every(total=>total===65));
+    assert.equal(imports[1].initial,'false');assert.deepEqual(imports[1].sites,imports[0].sites.slice(2));
+    assert.deepEqual([...imports[0].sites,...imports[2].sites],gameIds.slice(0,65).map(id=>`https://lichess.org/${id}`));
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('empty filters and exports missing selected games fail before creating studies',async()=>{
+  const originalFetch=globalThis.fetch;
+  for(const gameIds of [[],['00000002']]){
+    const requests=[];
+    globalThis.fetch=async url=>{requests.push(url);return new Response(pgn(2));};
+    try{
+      const job=new StudyImportJob({tournament,name:'Player games',visibility:'private',expectedCount:2,gameIds});
+      await assert.rejects(job.run('token',new AbortController().signal),gameIds.length?/incomplete/:/No games match/);
+      assert.equal(requests.length,1);assert.equal(job.studies.length,0);
+    }finally{globalThis.fetch=originalFetch;}
+  }
+  const selected=splitTournamentPgn(pgn(2).replace('https://lichess.org/00000001','https://lichess.org/00000001abcd'),2,['00000001']);
+  assert.equal(selected.length,1);assert.equal(parsePgn(selected[0])[0].headers.get('White'),'José 1');
 });
 
 test('retrying a partial import reuses its study and sends only the remaining games',async()=>{

@@ -11,7 +11,7 @@ const displaySettings=initThemeMenu();
 const studyImport=initStudyImport();
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={games:new Map(),positions:new Map(),playingIds:new Set(),filter:'playing',search:'',flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,lastInfoUpdate:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
+const state={games:new Map(),positions:new Map(),playingIds:new Set(),filter:'playing',search:'',player:null,flipped:new Set(),selected:null,tournament:null,info:null,controller:null,loading:false,pendingLoad:false,busy:false,retryAt:0,timer:null,renderTimer:null,lastDiscovery:0,lastInfoUpdate:0,newestCreatedAt:0,finishedToRefresh:new Set(),liveStatus:'idle',clockPausedAt:performance.now()};
 state.completeExport=true;
 state.refreshActiveGames=false;
 state.lastActiveRefresh=0;
@@ -51,9 +51,9 @@ function updateGameTabUnderline(){
   tabs.style.setProperty('--tab-width',`${rect.width}px`);
 }
 function clearSlotTransitions(){for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.node.style.height='';}}
-function updateSlotCard(slot,game,index){
+function updateSlotCard(slot,game,index,force=false){
   const signature=game?JSON.stringify([game,index,state.flipped.has(game.id),state.playingIds.has(game.id)]):null;
-  if(slot.signature===signature)return;
+  if(!force&&slot.signature===signature)return;
   const drawn=Boolean(slot.transition||slot.card?.querySelector('.board,.position-error'));
   if(slot.card)boardObserver.unobserve(slot.card);
   if(game){
@@ -68,13 +68,14 @@ function updateSlotCard(slot,game,index){
   slot.gameId=game?.id??null;slot.signature=signature;
 }
 function renderGameGrid(games){
-  const context=JSON.stringify([state.tournament?.type,state.tournament?.id,state.filter,state.search]);
-  const reset=gridContext!==context||state.pendingLoad||document.hidden||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  if(reset)clearSlotTransitions();
+  const context=JSON.stringify([state.tournament?.type,state.tournament?.id,state.search,state.player]);
+  const reset=gridContext?.context!==context||state.pendingLoad||document.hidden||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  const filterChanged=gridContext?.filter!==state.filter;
+  if(reset||filterChanged)clearSlotTransitions();
   const animate=!reset&&!state.loading&&!state.pendingLoad;
-  gridContext=context;
+  gridContext={context,filter:state.filter};
   // Finish a wave before applying the latest ordering. Live moves still update
-  // its incoming cards, including the snapshots revealed after the logo pause.
+  // the incoming cards while they turn.
   if(cardSlots.some(slot=>slot.transition)){
     for(let i=0;i<cardSlots.length;i++){const slot=cardSlots[i];updateSlotCard(slot,state.games.get(slot.gameId),i);}
     return true;
@@ -88,7 +89,8 @@ function renderGameGrid(games){
       slot={node,card:null,gameId:null,signature:null,transition:null};cardSlots.push(slot);$('game-grid').append(node);
     }
     const changed=slot.gameId!==(game?.id??null);
-    if(animate&&changed&&slot.card){
+    const entering=animate&&changed&&!slot.card&&Boolean(game);
+    if(animate&&(changed||filterChanged)&&slot.card){
       slot.transition=flipGameSlot(slot.node,{
         delay:waveIndex*80,clearing:!game,getCard:()=>slot.card,
         onComplete(){slot.transition=null;queueRender();}
@@ -96,7 +98,15 @@ function renderGameGrid(games){
       if(slot.transition)waveIndex++;
     }
     if(!slot.transition)slot.node.style.height='';
-    updateSlotCard(slot,game,i);
+    // Retained cards need a fresh reverse face when the filter changes.
+    updateSlotCard(slot,game,i,animate&&filterChanged);
+    if(entering){
+      slot.transition=flipGameSlot(slot.node,{
+        delay:waveIndex*80,entering:true,getCard:()=>slot.card,
+        onComplete(){slot.transition=null;queueRender();}
+      });
+      if(slot.transition)waveIndex++;
+    }
   }
   const transitioning=cardSlots.some(slot=>slot.transition);
   if(!transitioning)while(cardSlots.length>games.length){const slot=cardSlots.pop();if(slot.card)boardObserver.unobserve(slot.card);slot.node.remove();}
@@ -112,6 +122,7 @@ function render(){
   $('no-tournament').hidden=loaded;
   for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded||state.pendingLoad;
   document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab.dataset.filter===state.filter;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});
+  document.querySelectorAll('#standings [data-player]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.player===state.player)));
   const swiss=state.tournament?.type==='swiss';
   $('playing-tab-label').textContent=swiss?'Current round':'Playing';
   const all=orderTournamentGames(state.games.values(),state.info,{playingFirst:swiss});
@@ -119,10 +130,12 @@ function render(){
   const now=clockNow();
   state.playingIds=new Set(active.filter(game=>isPlayingAt(game,now)).map(game=>game.id));
   const playing=state.playingIds.size;
-  studyImport.update({tournament:state.tournament,info:state.info,pendingLoad:state.pendingLoad,loading:state.loading,completeExport:state.completeExport,gameCount:all.length,playing:active.length});
+  const playerGames=all.filter(g=>state.player?Object.values(g.players??{}).some(p=>String(p.user?.id??p.user?.name??p.name??'').toLowerCase()===state.player):JSON.stringify(g.players).toLowerCase().includes(state.search));
+  const playerFilter=state.player||state.search?{player:state.player,search:state.search,label:$('player-search').value.trim()}:null;
+  studyImport.update({tournament:state.tournament,info:state.info,pendingLoad:state.pendingLoad,loading:state.loading,completeExport:state.completeExport,gameCount:all.length,playing:active.length,playerFilter,gameIds:playerFilter?playerGames.map(game=>game.id):null});
   for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',swiss?roundIds.size:playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
   updateGameTabUnderline();
-  const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing'?(swiss?roundIds.has(g.id):state.playingIds.has(g.id)):!state.playingIds.has(g.id)))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
+  const visible=playerGames.filter(g=>state.filter==='all'||(state.filter==='playing'?(swiss?roundIds.has(g.id):state.playingIds.has(g.id)):!state.playingIds.has(g.id)));
   const transitioning=renderGameGrid(visible);
   const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
   const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!transitioning&&!swiss;
@@ -179,7 +192,10 @@ function updateInfo(info){
   $('time-control').textContent=info.clock?`${info.clock.limit/60} + ${info.clock.increment}`:'—';$('player-count').textContent=(info.nbPlayers??0).toLocaleString();
   $('duration').textContent=state.tournament.type==='swiss'?`${info.round??0} / ${info.nbRounds??0} rounds`:`${info.minutes??'—'} minutes`;
   $('tournament-external').href=`https://lichess.org/${state.tournament.type}/${state.tournament.id}`;
-  const standings=info.standing?.players??info.podium??[];$('standings').innerHTML=standings.slice(0,5).map(p=>`<li>${p.title?`<span class="player-title">${esc(p.title)}</span>`:''}<span class="standing-name">${esc(p.name??p.user?.name??p.id)}</span><span class="standing-points">${esc(p.score??'')}</span></li>`).join('');
+  const standings=info.standing?.players??info.podium??[];$('standings').innerHTML=standings.slice(0,5).map(p=>{
+    const name=p.name??p.user?.name??p.id,player=String(p.id??p.user?.id??name??'').toLowerCase();
+    return `<li><button class="standing-player" type="button" data-player="${esc(player)}" data-player-name="${esc(name)}" aria-label="Show games by ${esc(name)}" aria-controls="game-grid" aria-pressed="${player===state.player}">${p.title?`<span class="player-title">${esc(p.title)}</span>`:''}<span class="standing-name">${esc(name)}</span><span class="standing-points">${esc(p.score??'')}</span></button></li>`;
+  }).join('');
   $('standings-note').textContent=standings.length?'':state.tournament.type==='swiss'?'Standings on Lichess':'No standings yet';
 }
 function prettyVariant(variant){return ({standard:'Standard',chess960:'Chess960',kingOfTheHill:'King of the Hill',threeCheck:'Three-check',racingKings:'Racing Kings',crazyhouse:'Crazyhouse',atomic:'Atomic',horde:'Horde',antichess:'Antichess',fromPosition:'From position'})[variant]??variant??'Standard';}
@@ -267,10 +283,16 @@ document.addEventListener('click',event=>{const flip=event.target.closest('[data
 $('close-dialog').addEventListener('click',()=>$('game-dialog').close());
 $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$('game-dialog').close();}});
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
+$('standings').addEventListener('click',event=>{
+  const player=event.target.closest('[data-player]');if(!player)return;
+  clearSlotTransitions();gridContext=null;
+  state.player=player.dataset.player;state.search=player.dataset.playerName.toLowerCase();state.filter='all';
+  $('player-search').value=player.dataset.playerName;render();
+});
 window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline();});
 document.fonts?.ready.then(updateGameTabUnderline);
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
-$('player-search').addEventListener('input',e=>{clearSlotTransitions();state.search=e.target.value.trim().toLowerCase();render();});
+$('player-search').addEventListener('input',e=>{clearSlotTransitions();state.player=null;state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{clearSlotTransitions();displaySettings.set('density',b.dataset.density);queueRender();}));
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});
@@ -284,7 +306,16 @@ async function initializeTournament(){
   const parameters=new URLSearchParams(location.search),initial=parameters.get('swiss')??parameters.get('tournament');
   const tournament=authorization?.intent?.tournament;
   const value=tournament?`https://lichess.org/${tournament.type}/${tournament.id}`:initial?`https://lichess.org/${parameters.has('swiss')?'swiss':'tournament'}/${initial}`:null;
-  if(value){const loaded=await loadTournament(value);if(loaded.ok&&authorization?.intent)studyImport.open(authorization.intent,authorization.error);}
+  if(value){
+    const loaded=await loadTournament(value);
+    if(loaded.ok&&authorization?.intent){
+      const filter=authorization.intent.playerFilter;
+      state.player=filter?.player??null;state.search=filter?.search??'';
+      $('player-search').value=filter?.label??'';
+      if(filter)state.filter='all';
+      render();studyImport.open(authorization.intent,authorization.error);
+    }
+  }
   if(authorization?.error&&!authorization.intent)showNotice(authorization.error.message,true);
 }
 void initializeTournament();

@@ -5,16 +5,16 @@ import vm from 'node:vm';
 import * as model from '../src/model.js';
 
 // Run the real update loop and visibility handler without rendering boards.
-const source=readFileSync(new URL('../src/app.js',import.meta.url),'utf8').replace(/^import .*\n/gm,'');
+const source=readFileSync(new URL('../src/app.js',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('void initializeTournament();','const initialization=initializeTournament();');
 const game=(id,status='started')=>({id,status,variant:'standard',moves:'e4 e5',clock:{initial:60},clocks:[5900,5900],players:{white:{user:{name:'White'}},black:{user:{name:'Black'}}}});
 
-function harness({finished=true}={}){
-  const events=new Map(),elements=new Map(),timers=new Map(),exports=[],pauses=[],discoveries=[];
+function harness({finished=true,authorization=null,initialGames=[]}={}){
+  const events=new Map(),elements=new Map(),timers=new Map(),exports=[],pauses=[],discoveries=[],studyUpdates=[],studyOpens=[];
   let now=100000,timerId=0,infoCalls=0;
   let info={name:'Test tournament',isFinished:finished,nbPlayers:2};
   let reply=async ids=>ids.map(id=>game(id,'outoftime'));
   let discoverReply=async()=>{};
-  const element=()=>({hidden:false,disabled:false,open:false,dataset:{},classList:{toggle(){}},style:{setProperty(){}},addEventListener(){},setAttribute(){},close(){this.open=false;}});
+  const element=()=>({value:'',hidden:false,disabled:false,open:false,dataset:{},classList:{toggle(){}},style:{setProperty(){}},addEventListener(){},setAttribute(){},close(){this.open=false;}});
   const document={hidden:false,getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},querySelector:()=>element(),querySelectorAll:()=>[],addEventListener(name,callback){events.set(name,callback);}};
   const context=vm.createContext({
     ...model,document,URL,URLSearchParams,AbortController,
@@ -25,16 +25,17 @@ function harness({finished=true}={}){
     setInterval(){return 1;},clearInterval(){},requestAnimationFrame(){return 1;},cancelAnimationFrame(){},
     LiveGames:class{constructor(options){Object.assign(this,options);this.status='connected';}pause(value){pauses.push(value);}watch(){}close(){}},
     PairingStream:class{constructor(options){Object.assign(this,options);}pause(){}watch(){}close(){}deferUntil(){}},
-    initThemeMenu:()=>({set(){}}),initStudyImport:()=>({update(){},restoreAuthorization:async()=>null}),
+    initThemeMenu:()=>({set(){}}),initStudyImport:()=>({update(value){studyUpdates.push(value);},open(...args){studyOpens.push(args);},restoreAuthorization:async()=>authorization}),
+    loadTournamentData:async(tournament,signal,callbacks)=>{callbacks.onInfo(info,tournament);initialGames.forEach(callbacks.onGame);callbacks.onGamesComplete();},
     tournamentInfo:async()=>{infoCalls++;return info;},
     discoverTournamentGames:async(tournament,signal,onGame,options)=>{discoveries.push({tournament,options});await discoverReply(onGame,options);},
     refreshGames:async(ids,signal,onGame)=>{exports.push([...ids]);const games=await reply([...ids],signal);signal.throwIfAborted();games.forEach(onGame);},
   });
   vm.runInContext(source,context);
-  const app=vm.runInContext('const renderView=render; render=()=>{}; let visibleGames=[]; renderGameGrid=games=>{visibleGames=games;return false;}; ({state,live,updateTournament,updateLiveStatus,applyPairingEvent,requestPairingDiscovery,finishLiveGame,cardHtml,renderView,get visibleGames(){return visibleGames;}})',context);
+  const app=vm.runInContext('const renderView=render; render=()=>{}; let visibleGames=[]; renderGameGrid=games=>{visibleGames=games;return false;}; ({state,live,updateTournament,updateLiveStatus,applyPairingEvent,requestPairingDiscovery,finishLiveGame,cardHtml,renderView,initialization,get visibleGames(){return visibleGames;}})',context);
   Object.assign(app.state,{tournament:{type:'tournament',id:'testtour'},info,controller:new AbortController(),completeExport:true,lastDiscovery:now,lastInfoUpdate:now});
   return {
-    ...app,exports,timers,pauses,discoveries,elements,
+    ...app,exports,timers,pauses,discoveries,elements,studyUpdates,studyOpens,
     get visibleGames(){return app.visibleGames;},
     get infoCalls(){return infoCalls;},
     setInfo(value){info=value;},setReply(value){reply=value;},setDiscovery(value){discoverReply=value;},advance(ms){now+=ms;},
@@ -54,6 +55,33 @@ test('returning to an ended tournament confirms every game that finished while h
   assert.equal(h.exports[0].length,40); // Active catch-up is not capped by the history batch size.
   assert.ok([...h.state.games.values()].every(g=>!model.isPlaying(g)));
   assert.equal(h.state.refreshActiveGames,false);
+});
+
+test('study imports use the player selection across both colors and all game tabs',()=>{
+  const h=harness();
+  const pairing=(id,white,black)=>({...game(id,'mate'),players:{white:{user:{id:white.toLowerCase(),name:white}},black:{user:{id:black.toLowerCase(),name:black}}}});
+  for(const g of [pairing('alicew01','Alice','Bob'),pairing('aliceb01','Carol','Alice'),pairing('similar1','Alice2','Bob'),pairing('other001','Carol','Dave')])h.state.games.set(g.id,g);
+  h.state.player='alice';h.state.search='alice';h.elements.get('player-search').value='Alice';
+  for(const filter of ['all','finished','playing']){
+    h.state.filter=filter;h.renderView();
+    const update=h.studyUpdates.at(-1);
+    assert.deepEqual(Array.from(update.gameIds).sort(),['aliceb01','alicew01']);
+    assert.equal(update.gameCount,4);assert.equal(update.playerFilter.label,'Alice');
+  }
+  h.state.player=null;h.state.search='ali';h.elements.get('player-search').value='ali';h.renderView();
+  assert.deepEqual(Array.from(h.studyUpdates.at(-1).gameIds).sort(),['aliceb01','alicew01','similar1']);
+  h.state.search='';h.elements.get('player-search').value='';h.renderView();
+  assert.equal(h.studyUpdates.at(-1).gameIds,null);assert.equal(h.studyUpdates.at(-1).playerFilter,null);
+});
+
+test('returning from study sign-in restores the player filter before reopening the import',async()=>{
+  const intent={tournament:{type:'swiss',id:'testtour'},name:'White games',visibility:'private',gameIds:['white001'],expectedCount:2,playerFilter:{player:'white',search:'white',label:'White'}};
+  const h=harness({authorization:{intent},initialGames:[game('white001','mate'),{...game('other001','mate'),players:{white:{user:{name:'Alice'}},black:{user:{name:'Bob'}}}}]});
+  await h.initialization;
+  assert.equal(h.state.player,'white');assert.equal(h.state.search,'white');assert.equal(h.state.filter,'all');
+  assert.equal(h.elements.get('player-search').value,'White');
+  assert.equal(h.studyOpens.length,1);assert.deepEqual(h.studyOpens[0],[intent,undefined]);
+  h.renderView();assert.deepEqual(Array.from(h.studyUpdates.at(-1).gameIds),['white001']);
 });
 
 test('a quick tab return refreshes status even before the normal polling interval',async()=>{

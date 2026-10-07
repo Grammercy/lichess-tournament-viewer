@@ -3,24 +3,27 @@ import { startStudyAuthorization, completeStudyAuthorization, StudyImportJob, st
 
 export function initStudyImport(){
   const $=id=>document.getElementById(id);
-  let current=null,token=null,job=null,busy=false,error=null,phase='',retryAt=0,retryTimer;
+  let current=null,selection=null,token=null,job=null,busy=false,error=null,phase='',retryAt=0,retryTimer;
   const controller=new AbortController();
   window.addEventListener('pagehide',()=>{controller.abort();clearTimeout(retryTimer);});
 
   function render(){
-    const total=job?.games?.length??current?.gameCount??0;
+    const total=job?.games?.length??selection?.gameIds?.length??current?.gameIds?.length??current?.gameCount??0;
+    const filter=selection?.playerFilter??current?.playerFilter;
+    const action=filter?'Import filtered games':'Import all games';
     const studyCount=Math.ceil(total/studyChapterLimit);
-    $('study-import-summary').textContent=`Import all ${total.toLocaleString()} games from ${current?.info?.fullName??current?.info?.name??'this tournament'}. Each game becomes a chapter.`;
+    const player=filter?filter.player?` by ${filter.label}`:` matching "${filter.label}"`:'';
+    $('study-import-summary').textContent=`Import ${filter?'':'all '}${total.toLocaleString()} games${player} from ${current?.info?.fullName??current?.info?.name??'this tournament'}. Each game becomes a chapter.`;
     $('study-limit-note').textContent=studyCount>1?`Lichess allows 64 chapters per study. This import will create ${studyCount.toLocaleString()} studies.`:'This import will create one Lichess study.';
     const done=phase==='complete';
-    $('study-import-status').textContent=error?.message??(phase==='download'?'Downloading all tournament games…':phase==='create'?'Creating a Lichess study…':phase==='import'?`Imported ${job.imported.toLocaleString()} of ${total.toLocaleString()} games…`:done?`Imported all ${total.toLocaleString()} games.`:token?'Lichess connected. Choose Import all games to continue.':'Sign in to Lichess to create studies in your account.');
+    $('study-import-status').textContent=error?.message??(phase==='download'?'Downloading tournament games…':phase==='create'?'Creating a Lichess study…':phase==='import'?`Imported ${job.imported.toLocaleString()} of ${total.toLocaleString()} games…`:done?`Imported ${filter?'':'all '}${total.toLocaleString()} games.`:token?`Lichess connected. Choose ${action} to continue.`:'Sign in to Lichess to create studies in your account.');
     $('study-import-status').classList.toggle('error',Boolean(error));
     $('study-import-form').setAttribute('aria-busy',String(busy));
     for(const id of ['study-name','study-visibility'])$(id).disabled=busy||Boolean(job?.studies.some(study=>study.id));
     $('close-study-import').disabled=busy;
     $('study-import-submit').hidden=done||Boolean(error?.uncertain);
-    $('study-import-submit').disabled=busy||Date.now()<retryAt;
-    $('study-import-submit').textContent=busy?'Importing…':!token?'Sign in with Lichess':job?'Retry remaining games':'Import all games';
+    $('study-import-submit').disabled=busy||!total||Date.now()<retryAt;
+    $('study-import-submit').textContent=busy?'Importing…':!token?'Sign in with Lichess':job?'Retry remaining games':action;
     $('study-import-progress').hidden=!busy||!job?.games;
     $('study-import-progress').max=total||1;
     $('study-import-progress').value=job?.imported??0;
@@ -38,6 +41,7 @@ export function initStudyImport(){
   function open(intent,authorizationError){
     if(!current||!isTournamentFinished(current.info))return;
     if(!job){
+      selection={gameIds:intent?.gameIds??current.gameIds??null,playerFilter:intent?.playerFilter??current.playerFilter??null,expectedCount:intent?.expectedCount??current.gameCount};
       $('study-name').value=intent?.name??(current.info.fullName??current.info.name??'Tournament games').slice(0,100);
       $('study-visibility').value=intent?.visibility??'unlisted';
     }
@@ -51,7 +55,8 @@ export function initStudyImport(){
   $('study-import-dialog').addEventListener('click',event=>{if(!busy&&event.target===$('study-import-dialog'))$('study-import-dialog').close();});
   $('study-import-form').addEventListener('submit',async event=>{
     event.preventDefault();if(busy||!current||error?.uncertain||Date.now()<retryAt)return;
-    const intent={tournament:current.tournament,name:$('study-name').value.trim(),visibility:$('study-visibility').value};
+    const intent={...selection,tournament:current.tournament,name:$('study-name').value.trim(),visibility:$('study-visibility').value};
+    if(!intent.gameIds?.length&&intent.gameIds!==null)return;
     if(intent.name.length<2){$('study-name').setCustomValidity('Enter at least two characters.');$('study-name').reportValidity();return;}
     busy=true;error=null;render();
     try {
@@ -59,7 +64,7 @@ export function initStudyImport(){
         location.assign(await startStudyAuthorization(intent));
         return;
       }
-      job??=new StudyImportJob({...intent,expectedCount:current.gameCount});
+      job??=new StudyImportJob(intent);
       await job.run(token,controller.signal,progress=>{phase=progress.phase;render();});
     } catch(failure){
       if(controller.signal.aborted)return;
@@ -77,13 +82,14 @@ export function initStudyImport(){
   return {
     open,
     update(next){
-      if(current?.tournament?.id!==next.tournament?.id||current?.tournament?.type!==next.tournament?.type){
-        if(!busy){job=null;error=null;phase='';retryAt=0;clearTimeout(retryTimer);$('study-import-dialog').close();}
+      if(current?.tournament?.id!==next.tournament?.id||current?.tournament?.type!==next.tournament?.type||JSON.stringify(current?.playerFilter??null)!==JSON.stringify(next.playerFilter??null)){
+        if(!busy){selection=null;job=null;error=null;phase='';retryAt=0;clearTimeout(retryTimer);$('study-import-dialog').close();}
       }
       current=next;
+      const total=next.gameIds?.length??next.gameCount;
       $('import-study').hidden=!next.tournament||next.pendingLoad||!isTournamentFinished(next.info);
-      $('import-study').disabled=next.loading||!next.completeExport||!next.gameCount||next.playing>0;
-      $('import-study').title=next.loading||!next.completeExport?'Waiting for all tournament games':!next.gameCount?'No games to import':next.playing?'Waiting for the last games to finish':'Import every tournament game into Lichess studies';
+      $('import-study').disabled=next.loading||!next.completeExport||!total||next.playing>0;
+      $('import-study').title=next.loading||!next.completeExport?'Waiting for all tournament games':!total?'No games to import':next.playing?'Waiting for the last games to finish':next.playerFilter?'Import games matching the player filter into Lichess studies':'Import every tournament game into Lichess studies';
     },
     async restoreAuthorization(){
       const url=location.href,parameters=new URL(url).searchParams;

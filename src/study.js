@@ -70,24 +70,28 @@ export async function completeStudyAuthorization(url,{storage=sessionStorage,onI
   return {token:data.access_token,intent:authorization.intent};
 }
 
-export function splitTournamentPgn(pgn,expectedCount=0){
-  const games=[];let failure;
+export function splitTournamentPgn(pgn,expectedCount=0,gameIds=null){
+  const games=[],remaining=gameIds===null?null:new Set(gameIds);let failure,count=0;
   const parser=new PgnParser((game,error)=>{
     if(error){failure??=new StudyError('A tournament game is too large to import.');return;}
     if(!game.headers.get('White')||!game.headers.get('Black')||!['1-0','0-1','1/2-1/2','*'].includes(game.headers.get('Result'))){failure??=new StudyError('Lichess returned an invalid game export. Try again.');return;}
     if(game.headers.get('Result')==='*'){failure??=new StudyError('Some games are still finishing on Lichess. Wait a moment, then retry.');return;}
-    games.push(makePgn(game));
+    count++;
+    const id=game.headers.get('Site')?.match(/^https?:\/\/lichess\.org\/([A-Za-z0-9]{8})(?:[A-Za-z0-9]{4})?(?:[/?#]|$)/)?.[1];
+    if(!remaining||remaining.delete(id))games.push(makePgn(game));
   },()=>new Map());
   parser.parse(pgn);
   if(failure)throw failure;
-  if(!games.length)throw new StudyError('This tournament has no games to import.');
-  if(games.length<expectedCount)throw new StudyError('Lichess returned an incomplete tournament export. Try again before creating studies.');
+  if(!count)throw new StudyError('This tournament has no games to import.');
+  if(count<expectedCount||remaining?.size)throw new StudyError('Lichess returned an incomplete tournament export. Try again before creating studies.');
+  if(!games.length)throw new StudyError('No games match the current player filter.');
   return games;
 }
 
 export class StudyImportJob {
-  constructor({tournament,name,visibility,expectedCount=0}){
+  constructor({tournament,name,visibility,expectedCount=0,gameIds=null}){
     this.tournament={...tournament};this.name=name.trim();this.visibility=visibility;this.expectedCount=expectedCount;
+    this.gameIds=gameIds===null?null:[...gameIds];
     this.games=null;this.studies=[];
   }
   get imported(){return this.studies.reduce((total,study)=>total+study.imported,0);}
@@ -98,10 +102,10 @@ export class StudyImportJob {
   }
   async importGames(token,signal,onProgress){
     if(this.name.length<2||this.name.length>100||!['public','unlisted','private'].includes(this.visibility))throw new StudyError('Enter a study name between 2 and 100 characters and choose its visibility.');
-    const progress=phase=>onProgress({phase,total:this.games?.length??this.expectedCount,imported:this.imported,studies:this.studies});
+    const progress=phase=>onProgress({phase,total:this.games?.length??this.gameIds?.length??this.expectedCount,imported:this.imported,studies:this.studies});
     if(!this.games){
       progress('download');
-      this.games=splitTournamentPgn(await tournamentPgn(this.tournament,signal),this.expectedCount);
+      this.games=splitTournamentPgn(await tournamentPgn(this.tournament,signal),this.expectedCount,this.gameIds);
       const count=Math.ceil(this.games.length/studyChapterLimit);
       for(let index=0;index<count;index++){
         const suffix=count>1?` (${index+1}/${count})`:'';
