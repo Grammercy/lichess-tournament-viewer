@@ -18,7 +18,7 @@ export function isPlaying(game) { return ['created','started'].includes(game.sta
 // Only a result from Lichess can move a game out of Playing.
 export function isPlayingAt(game) { return isPlaying(game); }
 export function isTournamentFinished(info) { return info?.isFinished===true||info?.status==='finished'; }
-export function orderTournamentGames(games, info) {
+export function orderTournamentGames(games, info, {playingFirst=false}={}) {
   const ranks=new Map();
   for(const player of info?.rankingPlayers??info?.standing?.players??info?.podium??[]){
     const name=player.username??player.id??player.name??player.user?.id??player.user?.name;
@@ -26,9 +26,32 @@ export function orderTournamentGames(games, info) {
   }
   const playerRank=player=>ranks.get((player?.user?.id??player?.user?.name??player?.name??'').toLowerCase())??Number.MAX_SAFE_INTEGER;
   const bestRank=game=>Math.min(playerRank(game.players?.white),playerRank(game.players?.black));
-  return [...games].sort((a,b)=>bestRank(a)-bestRank(b)
+  return [...games].sort((a,b)=>(playingFirst?Number(isPlaying(b))-Number(isPlaying(a)):0)
+    ||bestRank(a)-bestRank(b)
     ||Number(isPlaying(b))-Number(isPlaying(a))
     ||(b.createdAt??0)-(a.createdAt??0)||a.id.localeCompare(b.id));
+}
+export function currentSwissRoundGames(games, info) {
+  const chronological=[...games].sort((a,b)=>(a.createdAt??0)-(b.createdAt??0)||a.id.localeCompare(b.id));
+  if(info?.round===0)return [];
+  // Swiss exports omit round numbers. Each round pairs a player only once,
+  // and the next round starts after the preceding games have ended.
+  let round=[],players=new Set(),end=0,ongoing=false;
+  for(const game of chronological){
+    const names=['white','black'].map(color=>{
+      const player=game.players?.[color];
+      return (player?.user?.id??player?.user?.name??player?.name??'').toLowerCase();
+    }).filter(Boolean);
+    if(names.some(name=>players.has(name))||(!ongoing&&end>0&&game.createdAt>end)){
+      round=[];players.clear();end=0;ongoing=false;
+    }
+    round.push(game);names.forEach(name=>players.add(name));
+    ongoing ||= isPlaying(game);
+    // Unplayed games can have a lastMoveAt equal to their creation time.
+    // They cannot establish when a round's games stopped overlapping.
+    if(!['aborted','noStart'].includes(game.status)&&game.lastMoveAt>game.createdAt)end=Math.max(end,game.lastMoveAt);
+  }
+  return round;
 }
 export function resultOf(game) {return isPlaying(game)?'*':game.winner==='white'?'1–0':game.winner==='black'?'0–1':game.status==='aborted'?'Aborted':'½–½';}
 export function mergeGameData(previous, game) {

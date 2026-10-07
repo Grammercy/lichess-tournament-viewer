@@ -31,10 +31,11 @@ function harness({finished=true}={}){
     refreshGames:async(ids,signal,onGame)=>{exports.push([...ids]);const games=await reply([...ids],signal);signal.throwIfAborted();games.forEach(onGame);},
   });
   vm.runInContext(source,context);
-  const app=vm.runInContext('render=()=>{}; ({state,live,updateTournament,updateLiveStatus,applyPairingEvent,requestPairingDiscovery})',context);
+  const app=vm.runInContext('const renderView=render; render=()=>{}; let visibleGames=[]; renderGameGrid=games=>{visibleGames=games;return false;}; ({state,live,updateTournament,updateLiveStatus,applyPairingEvent,requestPairingDiscovery,finishLiveGame,cardHtml,renderView,get visibleGames(){return visibleGames;}})',context);
   Object.assign(app.state,{tournament:{type:'tournament',id:'testtour'},info,controller:new AbortController(),completeExport:true,lastDiscovery:now,lastInfoUpdate:now});
   return {
-    ...app,exports,timers,pauses,discoveries,
+    ...app,exports,timers,pauses,discoveries,elements,
+    get visibleGames(){return app.visibleGames;},
     get infoCalls(){return infoCalls;},
     setInfo(value){info=value;},setReply(value){reply=value;},setDiscovery(value){discoverReply=value;},advance(ms){now+=ms;},
     visibility(hidden){document.hidden=hidden;events.get('visibilitychange')();},
@@ -142,7 +143,7 @@ test('bursts of stream starts batch one tournament check without adding unrelate
   assert.equal(h.state.discoveryRequested,false);assert.deepEqual(h.exports,[]);
 });
 
-test('a streamed result leaves Playing immediately without losing players or move history',()=>{
+test('a streamed result ends play immediately without losing players or move history',()=>{
   const h=harness({finished:false});const original=game('active01');h.state.games.set(original.id,original);
   h.applyPairingEvent({id:original.id,statusName:'mate',winner:'white'});
   const finished=h.state.games.get(original.id);
@@ -150,6 +151,53 @@ test('a streamed result leaves Playing immediately without losing players or mov
   assert.equal(finished.moves,original.moves);assert.deepEqual(finished.players,original.players);
   assert.equal(h.state.finishedToRefresh.has(original.id),true);
   assert.equal(h.state.discoveryRequested,true);
+});
+
+test('Swiss Current round keeps streamed results visible, puts playing games first and replaces old rounds',()=>{
+  const h=harness({finished:false});h.state.tournament.type='swiss';h.state.info.round=2;
+  const pairing=(id,white,black,createdAt,status='started',winner)=>({...game(id,status),createdAt,lastMoveAt:createdAt+1000,winner,players:{white:{user:{name:white}},black:{user:{name:black}}}});
+  const old=pairing('oldgame1','Alice','Bob',10000,'mate','white');
+  const first=pairing('active01','Alice','Carol',20000);
+  const second=pairing('active02','Bob','Dave',20001);
+  h.state.info.rankingPlayers=[{username:'Alice',rank:1},{username:'Bob',rank:2}];
+  [old,first,second].forEach(game=>h.state.games.set(game.id,game));
+  h.renderView();
+  assert.deepEqual(Array.from(h.visibleGames,g=>g.id),['active01','active02']);
+  h.finishLiveGame({id:'active01',win:'w'});h.renderView();
+  assert.deepEqual(Array.from(h.visibleGames,g=>g.id),['active02','active01']);
+  assert.equal(h.elements.get('playing-tab-label').textContent,'Current round');
+  assert.equal(h.elements.get('tab-playing').textContent,'2');
+  assert.equal(h.elements.get('playing-count').textContent,'1');
+  h.applyPairingEvent({id:'active02',statusName:'draw'});h.renderView();
+  assert.equal(h.visibleGames.length,2);
+  h.state.info.isFinished=true;h.renderView();
+  assert.equal(h.elements.get('tournament-over').hidden,true);
+  h.state.info.isFinished=false;h.state.info.round=3;
+  h.state.games.set('nextrnd1',pairing('nextrnd1','Alice','Dave',30000));h.renderView();
+  assert.deepEqual(Array.from(h.visibleGames,g=>g.id),['nextrnd1']);
+  h.state.filter='all';h.renderView();assert.equal(h.visibleGames.length,4);
+  h.state.filter='finished';h.renderView();assert.equal(h.visibleGames.length,3);
+  h.state.filter='playing';h.state.tournament.type='tournament';h.renderView();
+  assert.deepEqual(Array.from(h.visibleGames,g=>g.id),['nextrnd1']);
+  assert.equal(h.elements.get('playing-tab-label').textContent,'Playing');
+});
+
+test('finished cards identify either winner after a board flip, and distinguish draws and unplayed games',()=>{
+  const h=harness();const finished={...game('ended001','mate'),winner:'white'};
+  const white=h.cardHtml(finished,0);
+  assert.match(white,/game-card completed/);assert.match(white,/White won/);assert.match(white,/1–0/);
+  assert.match(white,/player-row winner.*player-symbol white.*winner-badge/s);
+  h.state.flipped.add(finished.id);
+  assert.match(h.cardHtml(finished,0),/player-row winner.*player-symbol white.*winner-badge/s);
+  finished.winner='black';
+  assert.match(h.cardHtml(finished,0),/Black won/);
+  assert.match(h.cardHtml(finished,0),/player-row winner.*player-symbol black.*winner-badge/s);
+  delete finished.winner;finished.status='draw';
+  const draw=h.cardHtml(finished,0);assert.match(draw,/Draw/);assert.match(draw,/½–½/);assert.doesNotMatch(draw,/winner-badge/);
+  for(const status of ['aborted','noStart']){
+    finished.status=status;const html=h.cardHtml(finished,0);
+    assert.match(html,status==='aborted'?/Aborted/:/Not played/);assert.doesNotMatch(html,/½–½|winner-badge/);
+  }
 });
 
 test('stream events during discovery retain another check with a five-second minimum gap',async()=>{

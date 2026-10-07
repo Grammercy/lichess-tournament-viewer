@@ -1,4 +1,4 @@
-import { gamePosition, clockValues, formatClock, isPlaying, isPlayingAt, isTournamentFinished, resultOf, parseTournament, mergeGameData, withLivePosition, orderTournamentGames } from './model.js';
+import { gamePosition, clockValues, formatClock, isPlaying, isPlayingAt, isTournamentFinished, resultOf, parseTournament, mergeGameData, withLivePosition, orderTournamentGames, currentSwissRoundGames } from './model.js';
 import { tournamentInfo, discoverTournamentGames, refreshGames } from './api.js';
 import { LiveGames } from './live.js';
 import { PairingStream } from './pairings.js';
@@ -28,7 +28,12 @@ function positionFor(game){if(!game.live&&typeof game.moves!=='string')return {p
 function clockNow(){return live.status==='connected'?performance.now():state.clockPausedAt;}
 function clockPercent(game,time){const initial=game.clock?.initial??state.info?.clock?.limit;return Number.isFinite(time)&&Number.isFinite(initial)&&initial>0?Math.max(0,Math.min(100,time/initial*100)):0;}
 function clockBarHtml(game,color,pos){const time=clockValues(game,pos,clockNow())[color];return `<div class="clock-bar" data-clock-color="${color}" style="--clock-percent:${clockPercent(game,time)}%" aria-hidden="true"></div>`;}
-function playerHtml(game,color,pos){const player=game.players?.[color]??{};const name=player.user?.name??player.name??'Anonymous';const now=clockNow(),time=clockValues(game,pos,now)[color],playing=isPlayingAt(game,now);return `<div class="player-row"><span class="player-symbol ${color}"></span>${player.user?.title?`<span class="player-title">${esc(player.user.title)}</span>`:''}<span class="player-name" title="${esc(name)}">${esc(name)}</span><span class="rating">${esc(player.rating??'')}</span><span class="player-clock${playing&&pos?.turn===color?' to-move':''}${playing&&time<20?' low':''}" data-clock-game="${esc(game.id)}" data-clock-color="${color}" title="${game.live?'Live clock':'Clock at last available move'}">${formatClock(time)}</span></div>`;}
+function playerHtml(game,color,pos){const player=game.players?.[color]??{};const name=player.user?.name??player.name??'Anonymous';const now=clockNow(),time=clockValues(game,pos,now)[color],playing=isPlayingAt(game,now),won=!playing&&game.winner===color;return `<div class="player-row${won?' winner':''}"><span class="player-symbol ${color}"></span>${player.user?.title?`<span class="player-title">${esc(player.user.title)}</span>`:''}<span class="player-name" title="${esc(name)}">${esc(name)}</span>${won?'<span class="winner-badge">Won</span>':''}<span class="rating">${esc(player.rating??'')}</span><span class="player-clock${playing&&pos?.turn===color?' to-move':''}${playing&&time<20?' low':''}" data-clock-game="${esc(game.id)}" data-clock-color="${color}" title="${game.live?'Live clock':'Clock at last available move'}">${formatClock(time)}</span></div>`;}
+function gameResultHtml(game){
+  const label=game.winner==='white'?'White won':game.winner==='black'?'Black won':game.status==='aborted'?'Aborted':game.status==='noStart'?'Not played':'Draw';
+  const score=!game.winner&&['aborted','noStart'].includes(game.status)?'':`<span class="result-label">${resultOf(game)}</span>`;
+  return `<span class="game-state"><span class="result-summary">${label}</span>${score}</span>`;
+}
 function lastMoveLabel(game,pos){if(game.live)return esc((game.live.uci??'').replace(/^([a-h][1-8])([a-h][1-8])(.*)$/,'$1–$2$3'))||'—';return pos?.moves?.length?`${Math.ceil(pos.moves.length/2)}. ${esc(pos.moves.at(-1))}`:'—';}
 function cardHtml(game,index,detail=false){
   const moves=(game.moves??'').trim().split(/\s+/).filter(Boolean);
@@ -36,7 +41,7 @@ function cardHtml(game,index,detail=false){
   const pos=detail?positionFor(game):(game.live||typeof game.moves==='string'?{moves,turn:game.live?.turn??((moves.length+firstTurn)%2?'black':'white')}:null);
   const flipped=state.flipped.has(game.id),playing=isPlayingAt(game,clockNow());
   const topColor=flipped?'white':'black',bottomColor=flipped?'black':'white';
-  return `<article class="game-card" data-game-id="${esc(game.id)}"><div class="game-topline"><span class="game-number">${detail?'':`#${index+1}`}</span>${playing?'':`<span class="game-state"><span class="result-label">${isPlaying(game)?'Result pending':resultOf(game)}</span></span>`}</div>${playerHtml(game,topColor,pos)}${clockBarHtml(game,topColor,pos)}${detail?boardHtml(pos,flipped):`<button class="board-button" data-open="${esc(game.id)}" aria-label="View ${esc(game.players?.white?.user?.name??'White')} versus ${esc(game.players?.black?.user?.name??'Black')}"><div class="board-placeholder"></div></button>`}${clockBarHtml(game,bottomColor,pos)}${playerHtml(game,bottomColor,pos)}<div class="game-bottomline"><span class="opening-name" title="${esc(game.opening?.name??'')}">${esc(game.opening?.name??prettyVariant(game.variant))}</span><div class="game-bottom-actions"><span>${lastMoveLabel(game,pos)}</span><button class="flip-button" data-flip="${esc(game.id)}" aria-label="Flip board" title="Flip board">${flipIcon}</button></div></div></article>`;
+  return `<article class="game-card${playing?'':' completed'}" data-game-id="${esc(game.id)}"><div class="game-topline"><span class="game-number">${detail?'':`#${index+1}`}</span>${playing?'':gameResultHtml(game)}</div>${playerHtml(game,topColor,pos)}${clockBarHtml(game,topColor,pos)}${detail?boardHtml(pos,flipped):`<button class="board-button" data-open="${esc(game.id)}" aria-label="View ${esc(game.players?.white?.user?.name??'White')} versus ${esc(game.players?.black?.user?.name??'Black')}"><div class="board-placeholder"></div></button>`}${clockBarHtml(game,bottomColor,pos)}${playerHtml(game,bottomColor,pos)}<div class="game-bottomline"><span class="opening-name" title="${esc(game.opening?.name??'')}">${esc(game.opening?.name??prettyVariant(game.variant))}</span><div class="game-bottom-actions"><span>${lastMoveLabel(game,pos)}</span><button class="flip-button" data-flip="${esc(game.id)}" aria-label="Flip board" title="Flip board">${flipIcon}</button></div></div></article>`;
 }
 function updateGameTabUnderline(){
   const tab=document.querySelector('.game-tab.active');
@@ -107,17 +112,20 @@ function render(){
   $('no-tournament').hidden=loaded;
   for(const id of ['tournament-panel','standings-panel','page-heading','summary-strip','toolbar','main-footer'])$(id).hidden=!loaded||state.pendingLoad;
   document.querySelectorAll('[data-filter]').forEach(tab=>{const active=tab.dataset.filter===state.filter;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});
-  const all=orderTournamentGames(state.games.values(),state.info);
+  const swiss=state.tournament?.type==='swiss';
+  $('playing-tab-label').textContent=swiss?'Current round':'Playing';
+  const all=orderTournamentGames(state.games.values(),state.info,{playingFirst:swiss});
+  const roundIds=swiss?new Set(currentSwissRoundGames(all,state.info).map(game=>game.id)):null;
   const now=clockNow();
   state.playingIds=new Set(active.filter(game=>isPlayingAt(game,now)).map(game=>game.id));
   const playing=state.playingIds.size;
   studyImport.update({tournament:state.tournament,info:state.info,pendingLoad:state.pendingLoad,loading:state.loading,completeExport:state.completeExport,gameCount:all.length,playing:active.length});
-  for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
+  for(const [id,val] of [['total-count',all.length],['playing-count',playing],['finished-count',all.length-playing],['tab-all',all.length],['tab-playing',swiss?roundIds.size:playing],['tab-finished',all.length-playing]])$(id).textContent=val.toLocaleString();
   updateGameTabUnderline();
-  const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing')===state.playingIds.has(g.id))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
+  const visible=all.filter(g=>(state.filter==='all'||(state.filter==='playing'?(swiss?roundIds.has(g.id):state.playingIds.has(g.id)):!state.playingIds.has(g.id)))&&JSON.stringify(g.players).toLowerCase().includes(state.search));
   const transitioning=renderGameGrid(visible);
   const showLoading=state.loading&&(state.pendingLoad||visible.length===0);
-  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!transitioning;
+  const showTournamentOver=Boolean(state.tournament)&&!state.pendingLoad&&!state.loading&&state.completeExport&&state.filter==='playing'&&tourFinished(state.info)&&active.length===0&&!transitioning&&!swiss;
   document.querySelector('.app-shell').classList.toggle('loading-tournament',showLoading);
   document.querySelector('.app-shell').classList.toggle('finished-tournament',showTournamentOver);
   $('tournament-over').hidden=!showTournamentOver;
