@@ -21,7 +21,7 @@ const pairings=new PairingStream({onGame:applyPairingEvent,onRateLimit:retryAt=>
 live.pause(document.hidden);
 pairings.pause(document.hidden);
 const cardSlots=[];
-let gridContext=null;
+let gridContext=null,resultHoldTimer=null;
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
 const flipIcon='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 7 3-3 3 3M7 4v13m13 0-3 3-3-3m3 3V7"/></svg>';
 function positionFor(game){if(!game.live&&typeof game.moves!=='string')return {pending:true};const old=state.positions.get(game.id);try{if(old&&old.sourceMoves===game.moves && old.sourceLive===game.live && old.initialFen===game.initialFen && old.variant===game.variant)return old;const pos=gamePosition(game,old);pos.sourceMoves=game.moves;pos.sourceLive=game.live;state.positions.set(game.id,pos);return pos;}catch{return null;}}
@@ -50,7 +50,7 @@ function updateGameTabUnderline(){
   tabs.style.setProperty('--tab-left',`${rect.left-tabs.getBoundingClientRect().left}px`);
   tabs.style.setProperty('--tab-width',`${rect.width}px`);
 }
-function clearSlotTransitions(){for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.node.style.height='';}}
+function clearSlotTransitions(){clearTimeout(resultHoldTimer);resultHoldTimer=null;for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.resultUntil=0;slot.node.style.height='';}}
 function updateSlotCard(slot,game,index,force=false){
   const signature=game?JSON.stringify([game,index,state.flipped.has(game.id),state.playingIds.has(game.id)]):null;
   if(!force&&slot.signature===signature)return;
@@ -65,15 +65,33 @@ function updateSlotCard(slot,game,index,force=false){
     else slot.node.replaceChildren(card);
     if(!drawn)boardObserver.observe(card);
   }else{slot.card=null;if(!slot.transition)slot.node.replaceChildren();}
-  slot.gameId=game?.id??null;slot.signature=signature;
+  if(slot.gameId!==(game?.id??null))slot.resultUntil=0;
+  slot.gameId=game?.id??null;slot.playing=Boolean(game&&isPlaying(game));slot.signature=signature;
 }
 function renderGameGrid(games){
   const context=JSON.stringify([state.tournament?.type,state.tournament?.id,state.search,state.player]);
-  const reset=gridContext?.context!==context||state.pendingLoad||document.hidden||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  const reset=gridContext?.context!==context||state.pendingLoad||document.hidden;
+  const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
   const filterChanged=gridContext?.filter!==state.filter;
   if(reset||filterChanged)clearSlotTransitions();
-  const animate=!reset&&!state.loading&&!state.pendingLoad;
+  if(reducedMotion)for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.node.style.height='';}
+  const animate=!reset&&!state.loading&&!state.pendingLoad&&!reducedMotion;
   gridContext={context,filter:state.filter};
+  clearTimeout(resultHoldTimer);resultHoldTimer=null;
+  const now=performance.now();let holdUntil=0;
+  if(!reset&&!filterChanged&&!state.loading){
+    for(let i=0;i<cardSlots.length;i++){
+      const slot=cardSlots[i],game=state.games.get(slot.gameId);
+      if(slot.playing&&game&&!isPlaying(game))slot.resultUntil=now+500;
+      if(slot.gameId!==(games[i]?.id??null))holdUntil=Math.max(holdUntil,slot.resultUntil??0);
+    }
+  }
+  // Show the result in its current slot before any clearing or replacement.
+  if(holdUntil>now&&!cardSlots.some(slot=>slot.transition)){
+    for(let i=0;i<cardSlots.length;i++){const slot=cardSlots[i];updateSlotCard(slot,state.games.get(slot.gameId),i);}
+    resultHoldTimer=setTimeout(()=>{resultHoldTimer=null;queueRender();},holdUntil-now);
+    return true;
+  }
   // Finish a wave before applying the latest ordering. Live moves still update
   // the incoming cards while they turn.
   if(cardSlots.some(slot=>slot.transition)){
@@ -285,9 +303,10 @@ $('game-dialog').addEventListener('click',e=>{if(e.target===$('game-dialog')){$(
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;render();}));
 $('standings').addEventListener('click',event=>{
   const player=event.target.closest('[data-player]');if(!player)return;
+  const selected=state.player===player.dataset.player;
   clearSlotTransitions();gridContext=null;
-  state.player=player.dataset.player;state.search=player.dataset.playerName.toLowerCase();state.filter='all';
-  $('player-search').value=player.dataset.playerName;render();
+  state.player=selected?null:player.dataset.player;state.search=selected?'':player.dataset.playerName.toLowerCase();state.filter='all';
+  $('player-search').value=selected?'':player.dataset.playerName;render();
 });
 window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline();});
 document.fonts?.ready.then(updateGameTabUnderline);

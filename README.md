@@ -2,7 +2,7 @@
 
 A minimal Lichess-style board wall for Arena and Swiss tournaments. Paste a tournament link or ID to load every game, including completed games, into one grid. There is no game limit or pagination. Boards outside the viewport render when approached to keep large tournaments responsive.
 
-Open the viewer on [ChatGPT Sites](https://lichess-tournament-viewer.aralani.chatgpt.site). Arena tournaments open on Playing. Swiss tournaments open on Current round, where completed games stay visible below ongoing games until the next round starts. The final round remains visible after the tournament ends. Completed cards have subdued boards, a result label, and a Won badge beside the winner. Choose All games or Finished to view earlier results.
+Open the viewer on [GitHub Pages](https://grammercy.github.io/lichess-tournament-viewer/) or [ChatGPT Sites](https://lichess-tournament-viewer.aralani.chatgpt.site). Arena tournaments open on Playing. Swiss tournaments open on Current round, where completed games stay visible below ongoing games until the next round starts. The final round remains visible after the tournament ends. Completed cards have subdued boards, a result label, and a Won badge beside the winner. Choose All games or Finished to view earlier results.
 
 A loading screen appears immediately after submitting a tournament and stays visible until the first game in the current filter arrives. If loading finishes without any matching games, the viewer shows the empty state.
 
@@ -20,7 +20,7 @@ New games are announced through one direct connection to Lichess's public player
 
 The viewer starts with a small Homura illustration and a speech bubble prompting you to paste a link, centered in the empty view. The bubble and its text are rendered in HTML and CSS. Clicking the prompt focuses the tournament input. After an Arena finishes and its last active game ends, Homura returns in the Playing tab to announce the end and point to the Finished tab. Filters, player search, board size, board flipping, and an enlarged game view are available after loading. Tournament links can also be opened with `?tournament=ID` or `?swiss=ID`.
 
-Cards stay in fixed grid slots. When a result, new pairing, or ranking update changes the game in a slot, the affected cards flip in a wave through the grid. Switching between All games, Playing, and Finished uses the same wave for every visible card, including games that remain in their slots. Each makes one 0.3-second half-turn with its next game on the reverse face. Visible slots start 0.08 seconds apart. A slot without a replacement flips to the Lichess logo, fades its card background away in 0.16 seconds, holds the logo for 3 seconds, then fades the logo away in 0.16 seconds. New games entering empty slots reverse that sequence without the hold: the logo fades in over 0.16 seconds, the background fades in over 0.16 seconds, then the card flips to the game over 0.3 seconds. Card swaps and cleanup follow the animation timeline. Live moves update the incoming cards during the wave, and further ordering changes follow in the next wave. Selecting another filter interrupts the current wave and transitions to the latest selection. Search, offscreen cards, and reduced-motion preferences update immediately.
+Cards stay in fixed grid slots. Finished games show their result and winner badge in their current slots for half a second before clearing or moving. When a result, new pairing, or ranking update changes the game in a slot, the affected cards flip in a wave through the grid. Switching between All games, Playing, and Finished uses the same wave for every visible card, including games that remain in their slots. Each makes one 0.3-second half-turn with its next game on the reverse face. Visible slots start 0.08 seconds apart. A slot without a replacement flips to the Lichess logo, fades its card background away in 0.16 seconds, holds the logo for 3 seconds, then fades the logo away in 0.16 seconds. New games entering empty slots reverse that sequence without the hold: the logo fades in over 0.16 seconds, the background fades in over 0.16 seconds, then the card flips to the game over 0.3 seconds. Card swaps and cleanup follow the animation timeline. Live moves update the incoming cards during the wave, and further ordering changes follow in the next wave. Selecting another filter interrupts the current wave and transitions to the latest selection. Search, offscreen cards, and reduced-motion preferences update immediately.
 
 The header's Theme dropdown has Appearance, Board, and Pieces tabs with a live, flippable preview. Appearance follows [Lichess's options](https://github.com/lichess-org/lila/blob/master/ui/dasher/src/theme.ts): Device theme, Light, and Dark, with an optional background picture, image opacity, and interface roundness. Pictures use the Lichess landscape by default or a custom HTTPS image URL. The board and piece catalogs include all 25 selectable 2D boards, 19 3D boards, 42 2D piece sets, and 11 3D piece sets from Lichess. Board controls also offer custom square colors, opacity, brightness, contrast, hue, coordinates, move highlights, and board size. Changes apply immediately to existing boards and the enlarged game view.
 
@@ -44,6 +44,16 @@ npm run validate
 ```
 
 The build produces a Cloudflare-compatible ESM Worker at `dist/server/index.js`. Assets are bundled into the Worker. The API proxy permits only the public Lichess tournament and game-export endpoints used by the viewer. Live positions connect directly to Lichess's `/api/socket` endpoint. Viewing tournaments requires no account. Study imports authenticate directly with Lichess.
+
+## GitHub Pages
+
+The [GitHub Pages site](https://grammercy.github.io/lichess-tournament-viewer/) deploys automatically when app changes reach `main`. The `Deploy GitHub Pages` workflow runs the tests, builds the static site, and publishes it. You can also run it manually from GitHub Actions.
+
+```sh
+npm run build:pages
+```
+
+The static files are in `dist/pages`. Asset paths are relative so the viewer works under the repository's URL path. This build calls the public Lichess API directly from the browser. Live updates and study sign-in also connect directly to Lichess. The default `npm run build` still produces the Worker used by ChatGPT Sites and the local development server.
 
 ## Sources and licensing
 

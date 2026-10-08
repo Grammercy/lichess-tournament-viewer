@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#161512"><meta name="description" content="Follow every game in a Lichess Arena or Swiss tournament on one board wall.">
   <title>Tournament Viewer</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Tournament View home"><img src="/lichess.svg" alt="" width="36" height="36"><span>lichess<span class="brand-org">.org</span></span></a>
+    <a class="brand" href="./" aria-label="Tournament View home"><img src="./lichess.svg" alt="" width="36" height="36"><span>lichess<span class="brand-org">.org</span></span></a>
     <div class="header-divider"></div><span class="product-name">Tournament view</span>
     <div class="header-end"><a href="https://lichess.org/tournament" target="_blank" rel="noopener">Explore tournaments <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></a>
       <div class="theme-picker" id="theme-picker">
@@ -94,7 +94,7 @@
       <div id="notice" role="status" aria-live="polite" hidden></div>
       <div class="no-tournament" id="no-tournament" role="status">
         <div class="homura-prompt">
-          <img class="homura-icon" src="/homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
+          <img class="homura-icon" src="./homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
           <button id="paste-link-prompt" class="prompt-bubble" type="button" aria-controls="tournament-input">
             <span class="prompt-title">Paste a tournament link</span>
             <span class="prompt-hint">Then choose Watch tournament.</span>
@@ -109,14 +109,14 @@
       <section id="game-grid" class="game-grid compact" aria-label="Tournament games" aria-busy="false"></section>
       <div id="tournament-over" class="tournament-complete" role="status" hidden>
         <div class="homura-prompt">
-          <img class="homura-icon" src="/homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
+          <img class="homura-icon" src="./homura.png" alt="Homura Akemi" width="171" height="350" draggable="false">
           <div class="prompt-bubble">
             <span class="prompt-title">The tournament is over.</span>
             <span class="prompt-hint">This timeline has reached its end. The games are in Finished, if you need to look back.</span>
           </div>
         </div>
       </div>
-      <div id="empty-state" class="empty-state" hidden><img src="/pieces/wN.svg" alt="" width="64" height="64"><h2 id="empty-title">No games to show</h2><p id="empty-message">Try another player or game filter.</p></div>
+      <div id="empty-state" class="empty-state" hidden><img src="./pieces/wN.svg" alt="" width="64" height="64"><h2 id="empty-title">No games to show</h2><p id="empty-message">Try another player or game filter.</p></div>
       <footer class="main-footer" id="main-footer" hidden><span id="visible-caption"></span></footer>
     </main>
   </div>

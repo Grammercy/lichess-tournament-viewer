@@ -104,7 +104,7 @@ export function pieceSet(preferences) {
 export function pieceUrl(set, code, dimension = '2d', flipped = false, preview = false) {
   if (!pieceCodes.includes(code)) throw new Error('Invalid piece');
   if (dimension === '2d') {
-    if (set.id === 'cburnett') return `/pieces/${code}.svg`;
+    if (set.id === 'cburnett') return `./pieces/${code}.svg`;
     return `https://lichess1.org/assets/piece/${set.id}/${code}.${set.ext}`;
   }
   const role = { K: 'King', Q: 'Queen', R: 'Rook', B: 'Bishop', N: 'Knight', P: 'Pawn' }[code[1]];

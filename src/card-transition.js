@@ -40,7 +40,7 @@ export function flipGameSlot(node,{delay=0,getCard,onComplete,clearing=false,ent
     const background=document.createElement('div');
     background.className='game-slot-backdrop';
     const logo=document.createElement('img');
-    logo.src='/lichess.svg';
+    logo.src='./lichess.svg';
     logo.alt='';
     logo.width=100;
     logo.height=100;

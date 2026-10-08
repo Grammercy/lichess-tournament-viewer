@@ -4,6 +4,54 @@ import { readFile } from 'node:fs/promises';
 import { readNdjson, tournamentInfo, discoverTournamentGames, tournamentPgn, streamPlayerGames } from '../src/api.js';
 import worker from '../dist/server/index.js';
 
+test('the Pages API supports direct Arena and Swiss streams, PGN downloads, and game refreshes',async()=>{
+  const originalFetch=globalThis.fetch,originalBase=globalThis.LICHESS_API_BASE,requests=[];
+  globalThis.LICHESS_API_BASE='https://lichess.org';
+  try{
+    const api=await import('../src/api.js?pages');
+    const signal=new AbortController().signal;
+    const game={id:'active01',status:'started',moves:'e4'};
+    const pgn='[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 1-0\n';
+    globalThis.fetch=async(url,options)=>{
+      const target=new URL(url);requests.push({target,options});
+      assert.equal(target.origin,'https://lichess.org');
+      assert.equal(options.signal,signal);
+      if(options.headers?.Accept==='application/x-chess-pgn')return new Response(pgn);
+      if(target.pathname.endsWith('/results'))return new Response('{"username":"Alice","rank":1}\n');
+      if(target.pathname.endsWith('/games')||target.pathname.endsWith('/export/_ids'))return new Response(`${JSON.stringify(game)}\n`);
+      return Response.json({name:'Test tournament'});
+    };
+    for(const type of ['tournament','swiss']){
+      const tournament={type,id:'abcdefgh'};
+      const info=await api.tournamentInfo(tournament,signal);
+      assert.equal(info.name,'Test tournament');
+      assert.equal(info.rankingPlayers[0].username,'Alice');
+      const games=[];
+      await api.tournamentGames(tournament,signal,value=>games.push(value));
+      assert.deepEqual(games,[game]);
+      assert.equal(await api.tournamentPgn(tournament,signal),pgn);
+    }
+    const refreshed=[];
+    await api.refreshGames(['active01'],signal,value=>refreshed.push(value));
+    assert.deepEqual(refreshed,[game]);
+    assert.deepEqual(requests.map(({target})=>target.pathname),[
+      '/api/tournament/abcdefgh','/api/tournament/abcdefgh/results',
+      '/api/tournament/abcdefgh/games','/api/tournament/abcdefgh/games',
+      '/api/swiss/abcdefgh','/api/swiss/abcdefgh/results',
+      '/api/swiss/abcdefgh/games','/api/swiss/abcdefgh/games',
+      '/api/games/export/_ids',
+    ]);
+    const exported=requests.at(-1);
+    assert.equal(exported.options.method,'POST');
+    assert.equal(exported.options.body,'active01');
+    assert.equal(exported.options.headers['Content-Type'],'text/plain');
+  }finally{
+    globalThis.fetch=originalFetch;
+    if(originalBase===undefined)delete globalThis.LICHESS_API_BASE;
+    else globalThis.LICHESS_API_BASE=originalBase;
+  }
+});
+
 test('NDJSON handles split UTF-8 characters, heartbeats, and a final line without newline',async()=>{
   const bytes=new TextEncoder().encode('\n{"name":"José"}\n\n{"id":"last"}');
   const stream=new ReadableStream({start(c){for(const byte of bytes)c.enqueue(new Uint8Array([byte]));c.close();}});

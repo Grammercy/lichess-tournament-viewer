@@ -88,7 +88,7 @@ test('asset URLs support raster piece sets and the orientation of 3D bishops and
   const staunton = pieces3d.find(x => x.id === 'Staunton');
   assert.ok(pieceUrl(staunton, 'wN', '3d', false, true).endsWith('/White-Knight-Preview.webp'));
   assert.ok(pieceUrl(staunton, 'wN', '3d', true).endsWith('/White-Knight.webp'));
-  assert.equal(pieceUrl(pieces2d[0], 'wN'), '/pieces/wN.svg');
+  assert.equal(pieceUrl(pieces2d[0], 'wN'), './pieces/wN.svg');
 });
 
 test('both dimensions expose the complete selectable Lichess catalogs with unique IDs', () => {

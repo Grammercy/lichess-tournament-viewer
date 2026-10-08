@@ -1,8 +1,10 @@
 import { isPlaying } from './model.js';
 
 export class ApiError extends Error { constructor(message,status=0,retryAfter=0){super(message);this.status=status;this.retryAfter=retryAfter;} }
+// The Pages bundle uses Lichess directly; Worker builds keep the public proxy.
+const apiBase=typeof LICHESS_API_BASE==='undefined'?'/lichess':LICHESS_API_BASE;
 async function checked(path,options={}) {
-  const response=await fetch(`/lichess${path}`,options);
+  const response=await fetch(`${apiBase}${path}`,options);
   return checkedResponse(response);
 }
 function checkedResponse(response){
