@@ -69,17 +69,18 @@ function updateSlotCard(slot,game,index,force=false){
   slot.gameId=game?.id??null;slot.playing=Boolean(game&&isPlaying(game));slot.signature=signature;
 }
 function renderGameGrid(games){
-  const context=JSON.stringify([state.tournament?.type,state.tournament?.id,state.search,state.player]);
-  const reset=gridContext?.context!==context||state.pendingLoad||document.hidden;
+  const context=JSON.stringify([state.tournament?.type,state.tournament?.id]);
+  const playerChanged=gridContext?.player!==state.player;
+  const reset=gridContext?.context!==context||(gridContext?.search!==state.search&&!playerChanged)||state.pendingLoad||document.hidden;
   const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  const filterChanged=gridContext?.filter!==state.filter;
-  if(reset||filterChanged)clearSlotTransitions();
+  const selectionChanged=gridContext?.filter!==state.filter||playerChanged;
+  if(reset||selectionChanged)clearSlotTransitions();
   if(reducedMotion)for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.node.style.height='';}
   const animate=!reset&&!state.loading&&!state.pendingLoad&&!reducedMotion;
-  gridContext={context,filter:state.filter};
+  gridContext={context,filter:state.filter,search:state.search,player:state.player};
   clearTimeout(resultHoldTimer);resultHoldTimer=null;
   const now=performance.now();let holdUntil=0;
-  if(!reset&&!filterChanged&&!state.loading){
+  if(!reset&&!selectionChanged&&!state.loading){
     for(let i=0;i<cardSlots.length;i++){
       const slot=cardSlots[i],game=state.games.get(slot.gameId);
       if(slot.playing&&game&&!isPlaying(game))slot.resultUntil=now+500;
@@ -108,7 +109,7 @@ function renderGameGrid(games){
     }
     const changed=slot.gameId!==(game?.id??null);
     const entering=animate&&changed&&!slot.card&&Boolean(game);
-    if(animate&&(changed||filterChanged)&&slot.card){
+    if(animate&&(changed||selectionChanged)&&slot.card){
       slot.transition=flipGameSlot(slot.node,{
         delay:waveIndex*80,clearing:!game,getCard:()=>slot.card,
         onComplete(){slot.transition=null;queueRender();}
@@ -116,8 +117,8 @@ function renderGameGrid(games){
       if(slot.transition)waveIndex++;
     }
     if(!slot.transition)slot.node.style.height='';
-    // Retained cards need a fresh reverse face when the filter changes.
-    updateSlotCard(slot,game,i,animate&&filterChanged);
+    // Retained cards need a fresh reverse face when the tab or player changes.
+    updateSlotCard(slot,game,i,animate&&selectionChanged);
     if(entering){
       slot.transition=flipGameSlot(slot.node,{
         delay:waveIndex*80,entering:true,getCard:()=>slot.card,
@@ -304,14 +305,13 @@ document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click'
 $('standings').addEventListener('click',event=>{
   const player=event.target.closest('[data-player]');if(!player)return;
   const selected=state.player===player.dataset.player;
-  clearSlotTransitions();gridContext=null;
-  state.player=selected?null:player.dataset.player;state.search=selected?'':player.dataset.playerName.toLowerCase();state.filter='all';
+  state.player=selected?null:player.dataset.player;state.search=selected?'':player.dataset.playerName.toLowerCase();state.filter=selected?'playing':'all';
   $('player-search').value=selected?'':player.dataset.playerName;render();
 });
 window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline();});
 document.fonts?.ready.then(updateGameTabUnderline);
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
-$('player-search').addEventListener('input',e=>{clearSlotTransitions();state.player=null;state.search=e.target.value.trim().toLowerCase();render();});
+$('player-search').addEventListener('input',e=>{clearSlotTransitions();gridContext=null;state.player=null;state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{clearSlotTransitions();displaySettings.set('density',b.dataset.density);queueRender();}));
 render();
 $('tournament-form').addEventListener('submit',event=>{event.preventDefault();void loadTournament($('tournament-input').value);});

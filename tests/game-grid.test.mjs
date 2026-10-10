@@ -23,7 +23,7 @@ function harness(){
     return {content:{},set innerHTML(id){const card=node();card.id=id;card.game=state.games.get(id);card.querySelector=selector=>selector==='.board-button'?{innerHTML:''}:null;this.content.firstElementChild=card;}};
   }};
   let reducedMotion=false;
-  const state={tournament:{type:'tournament',id:'testtour'},filter:'all',search:'',games:new Map(games.map(game=>[game.id,game])),flipped:new Set(),playingIds:new Set(),loading:false,pendingLoad:false};
+  const state={tournament:{type:'tournament',id:'testtour'},filter:'all',search:'',player:null,games:new Map(games.map(game=>[game.id,game])),flipped:new Set(),playingIds:new Set(),loading:false,pendingLoad:false};
   const context=vm.createContext({
     state,document,isPlaying,performance:{now:()=>now},window:{matchMedia:()=>({matches:reducedMotion})},
     setTimeout(fn,delay){const id=++timerId;timers.set(id,{fn,at:now+delay});return id;},clearTimeout(id){timers.delete(id);},
@@ -46,6 +46,7 @@ function harness(){
     advance(ms){now+=ms;for(const [id,timer] of timers){if(timer.at<=now){timers.delete(id);timer.fn();}}},
     reduceMotion(value){reducedMotion=value;},
     select(filter,visible){state.filter=filter;return app.renderGameGrid(visible);},
+    selectPlayer(player,visible){state.player=player;state.search=player??'';return this.select(player?'all':'playing',visible);},
     complete(){animations.forEach(animation=>animation.complete());},
     ids(){return Array.from(app.cardSlots,slot=>slot.gameId);}
   };
@@ -134,6 +135,41 @@ test('rapid filter changes interrupt the old wave and finish on the latest filte
   h.select('all',games);
   h.complete();h.renderGameGrid(games);
   assert.deepEqual(h.ids(),games.map(game=>game.id));
+  assert.ok(h.cardSlots.every(slot=>!slot.transition&&slot.node.children[0]===slot.card));
+});
+
+test('selecting a player flips retained cards and clears the other games',()=>{
+  const h=harness();h.renderGameGrid(games);
+  assert.equal(h.selectPlayer('alice',[games[0],games[1]]),true);
+  assert.deepEqual(h.animations.map(a=>Boolean(a.options.clearing)),[false,false,true,true]);
+  assert.deepEqual(h.animations.map(a=>a.options.delay),[0,80,160,240]);
+  assert.notEqual(h.animations[0].front,h.cardSlots[0].card);
+  assert.equal(h.animations[0].incoming,h.cardSlots[0].card);
+  h.complete();h.renderGameGrid([games[0],games[1]]);
+  assert.deepEqual(h.ids(),[games[0].id,games[1].id]);
+});
+
+test('deselecting a player returns to Playing with replacement and entrance flips',()=>{
+  const h=harness();h.selectPlayer('alice',[games[1]]);
+  assert.equal(h.selectPlayer(null,[games[0],games[2]]),true);
+  assert.deepEqual(h.animations.map(a=>Boolean(a.options.entering)),[false,true]);
+  assert.equal(h.animations[0].front.id,games[1].id);
+  assert.equal(h.animations[0].incoming.id,games[0].id);
+  h.complete();h.renderGameGrid([games[0],games[2]]);
+  assert.deepEqual(h.ids(),[games[0].id,games[2].id]);
+});
+
+test('player changes interrupt the current wave even when the game tab stays the same',()=>{
+  const h=harness();h.renderGameGrid(games);
+  h.selectPlayer('alice',[games[0]]);
+  const firstWave=[...h.animations];
+  h.selectPlayer('bob',[games[0],games[2]]);
+  assert.ok(firstWave.every(animation=>animation.cancelled));
+  assert.notEqual(h.animations[4].front,h.cardSlots[0].card);
+  h.selectPlayer(null,[games[0],games[2]]);
+  h.complete();h.renderGameGrid([games[0],games[2]]);
+  assert.equal(h.state.filter,'playing');
+  assert.deepEqual(h.ids(),[games[0].id,games[2].id]);
   assert.ok(h.cardSlots.every(slot=>!slot.transition&&slot.node.children[0]===slot.card));
 });
 

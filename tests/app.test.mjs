@@ -14,7 +14,7 @@ function harness({finished=true,authorization=null,initialGames=[]}={}){
   let info={name:'Test tournament',isFinished:finished,nbPlayers:2};
   let reply=async ids=>ids.map(id=>game(id,'outoftime'));
   let discoverReply=async()=>{};
-  const element=()=>({value:'',hidden:false,disabled:false,open:false,dataset:{},classList:{toggle(){}},style:{setProperty(){}},addEventListener(){},setAttribute(){},close(){this.open=false;}});
+  const element=()=>({value:'',hidden:false,disabled:false,open:false,dataset:{},listeners:new Map(),classList:{toggle(){}},style:{setProperty(){}},addEventListener(name,callback){this.listeners.set(name,callback);},setAttribute(){},close(){this.open=false;}});
   const document={hidden:false,getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},querySelector:()=>element(),querySelectorAll:()=>[],addEventListener(name,callback){events.set(name,callback);}};
   const context=vm.createContext({
     ...model,document,URL,URLSearchParams,AbortController,
@@ -72,6 +72,19 @@ test('study imports use the player selection across both colors and all game tab
   assert.deepEqual(Array.from(h.studyUpdates.at(-1).gameIds).sort(),['aliceb01','alicew01','similar1']);
   h.state.search='';h.elements.get('player-search').value='';h.renderView();
   assert.equal(h.studyUpdates.at(-1).gameIds,null);assert.equal(h.studyUpdates.at(-1).playerFilter,null);
+});
+
+test('clicking a standings player selects all their games and clicking again returns to Playing',()=>{
+  const h=harness();
+  const clickPlayer=name=>h.elements.get('standings').listeners.get('click')({target:{closest:()=>({dataset:{player:name.toLowerCase(),playerName:name}})}});
+  clickPlayer('Alice');
+  assert.equal(h.state.player,'alice');assert.equal(h.state.search,'alice');assert.equal(h.state.filter,'all');
+  assert.equal(h.elements.get('player-search').value,'Alice');
+  clickPlayer('Bob');
+  assert.equal(h.state.player,'bob');assert.equal(h.state.filter,'all');
+  h.state.filter='finished';clickPlayer('Bob');
+  assert.equal(h.state.player,null);assert.equal(h.state.search,'');assert.equal(h.state.filter,'playing');
+  assert.equal(h.elements.get('player-search').value,'');
 });
 
 test('returning from study sign-in restores the player filter before reopening the import',async()=>{
