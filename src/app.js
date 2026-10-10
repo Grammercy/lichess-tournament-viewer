@@ -22,6 +22,8 @@ live.pause(document.hidden);
 pairings.pause(document.hidden);
 const cardSlots=[];
 let gridContext=null,resultHoldTimer=null;
+let gameTabIndicator=null;
+const gameTabMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const boardObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const game=state.games.get(entry.target.dataset.gameId);if(game){const button=entry.target.querySelector('.board-button');if(button)button.innerHTML=boardHtml(positionFor(game),state.flipped.has(game.id));}boardObserver.unobserve(entry.target);}},{rootMargin:'500px'});
 const flipIcon='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 7 3-3 3 3M7 4v13m13 0-3 3-3-3m3 3V7"/></svg>';
 function positionFor(game){if(!game.live&&typeof game.moves!=='string')return {pending:true};const old=state.positions.get(game.id);try{if(old&&old.sourceMoves===game.moves && old.sourceLive===game.live && old.initialFen===game.initialFen && old.variant===game.variant)return old;const pos=gamePosition(game,old);pos.sourceMoves=game.moves;pos.sourceLive=game.live;state.positions.set(game.id,pos);return pos;}catch{return null;}}
@@ -43,12 +45,65 @@ function cardHtml(game,index,detail=false){
   const topColor=flipped?'white':'black',bottomColor=flipped?'black':'white';
   return `<article class="game-card${playing?'':' completed'}" data-game-id="${esc(game.id)}"><div class="game-topline"><span class="game-number">${detail?'':`#${index+1}`}</span>${playing?'':gameResultHtml(game)}</div>${playerHtml(game,topColor,pos)}${clockBarHtml(game,topColor,pos)}${detail?boardHtml(pos,flipped):`<button class="board-button" data-open="${esc(game.id)}" aria-label="View ${esc(game.players?.white?.user?.name??'White')} versus ${esc(game.players?.black?.user?.name??'Black')}"><div class="board-placeholder"></div></button>`}${clockBarHtml(game,bottomColor,pos)}${playerHtml(game,bottomColor,pos)}<div class="game-bottomline"><span class="opening-name" title="${esc(game.opening?.name??'')}">${esc(game.opening?.name??prettyVariant(game.variant))}</span><div class="game-bottom-actions"><span>${lastMoveLabel(game,pos)}</span><button class="flip-button" data-flip="${esc(game.id)}" aria-label="Flip board" title="Flip board">${flipIcon}</button></div></div></article>`;
 }
-function updateGameTabUnderline(){
+function paintGameTabUnderline(){
+  const {tabs,center,width,scale}=gameTabIndicator;
+  tabs.style.setProperty('--tab-left',`${center-width/2}px`);
+  tabs.style.setProperty('--tab-width',`${width}px`);
+  tabs.style.setProperty('--tab-scale',String(scale));
+}
+function settleGameTabUnderline(){
+  if(!gameTabIndicator)return;
+  cancelAnimationFrame(gameTabIndicator.frame);
+  for(const key of ['center','width','scale']){
+    gameTabIndicator[key]=gameTabIndicator.target[key];
+    gameTabIndicator.velocity[key]=0;
+  }
+  gameTabIndicator.frame=null;
+  paintGameTabUnderline();
+}
+function animateGameTabUnderline(now){
+  const indicator=gameTabIndicator;
+  if(gameTabMotion?.matches||document.hidden){settleGameTabUnderline();return;}
+  const elapsed=Math.max(0,Math.min((now-indicator.time)/1000,.064));
+  indicator.time=now;
+  // Small physics steps keep the spring stable at different refresh rates.
+  const steps=Math.max(1,Math.ceil(elapsed*120)),dt=elapsed/steps;
+  for(let step=0;step<steps;step++)for(const key of ['center','width','scale']){
+    const stiffness=key==='scale'?500:440,damping=key==='scale'?18:26;
+    indicator.velocity[key]+=((indicator.target[key]-indicator[key])*stiffness-indicator.velocity[key]*damping)*dt;
+    indicator[key]+=indicator.velocity[key]*dt;
+  }
+  const settled=['center','width','scale'].every(key=>{
+    const tolerance=key==='scale' ? .0005 : .05;
+    return Math.abs(indicator.target[key]-indicator[key])<tolerance&&Math.abs(indicator.velocity[key])<tolerance*10;
+  });
+  if(settled){settleGameTabUnderline();return;}
+  paintGameTabUnderline();
+  indicator.frame=requestAnimationFrame(animateGameTabUnderline);
+}
+function updateGameTabUnderline(animate=true){
   const tab=document.querySelector('.game-tab.active');
   if(!tab?.offsetWidth)return;
   const tabs=tab.parentElement,rect=tab.getBoundingClientRect();
-  tabs.style.setProperty('--tab-left',`${rect.left-tabs.getBoundingClientRect().left}px`);
-  tabs.style.setProperty('--tab-width',`${rect.width}px`);
+  const target={center:rect.left-tabs.getBoundingClientRect().left+rect.width/2,width:rect.width,scale:1};
+  if(!gameTabIndicator){
+    gameTabIndicator={tabs,tab,...target,target,velocity:{center:0,width:0,scale:0},frame:null,time:0};
+    paintGameTabUnderline();return;
+  }
+  const indicator=gameTabIndicator,changed=indicator.tab!==tab;
+  indicator.tab=tab;indicator.target=target;
+  if(!animate||gameTabMotion?.matches||document.hidden){settleGameTabUnderline();return;}
+  if(changed){
+    const direction=Math.sign(target.center-indicator.center);
+    const push=3.8*Math.max(0,Math.min(1,(indicator.scale-.85)/.15));
+    const previousVelocity=indicator.velocity.scale;
+    indicator.velocity.scale=Math.min(previousVelocity,-push);
+    // A push at the trailing end compresses the bar before it springs forward.
+    indicator.velocity.center+=direction*indicator.width*(previousVelocity-indicator.velocity.scale)/2;
+  }
+  if(!changed&&indicator.center===target.center&&indicator.width===target.width)return;
+  // Retarget the running spring without resetting its position or momentum.
+  if(indicator.frame===null){indicator.time=performance.now();indicator.frame=requestAnimationFrame(animateGameTabUnderline);}
 }
 function clearSlotTransitions(){clearTimeout(resultHoldTimer);resultHoldTimer=null;for(const slot of cardSlots){slot.transition?.cancel();slot.transition=null;slot.resultUntil=0;slot.node.style.height='';}}
 function updateSlotCard(slot,game,index,force=false){
@@ -168,7 +223,6 @@ function render(){
   $('game-grid').setAttribute('aria-busy',String(showLoading));
   $('empty-state').hidden=!loaded||visible.length>0||transitioning||showLoading||showTournamentOver;
   $('empty-title').textContent=state.loading?'Loading games…':state.games.size?'No matching games':'No games yet';
-  $('empty-message').textContent=state.loading?'':state.games.size?'Try another player or game filter.':'Games will appear when play starts.';
   $('visible-caption').textContent=visible.length===all.length?`${all.length.toLocaleString()} games`:`${visible.length.toLocaleString()} of ${all.length.toLocaleString()} games`;
   if(state.selected&&$('game-dialog').open)renderDialog();
 }
@@ -308,8 +362,9 @@ $('standings').addEventListener('click',event=>{
   state.player=selected?null:player.dataset.player;state.search=selected?'':player.dataset.playerName.toLowerCase();state.filter=selected?'playing':'all';
   $('player-search').value=selected?'':player.dataset.playerName;render();
 });
-window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline();});
-document.fonts?.ready.then(updateGameTabUnderline);
+window.addEventListener('resize',()=>{clearSlotTransitions();queueRender();updateGameTabUnderline(false);});
+document.fonts?.ready.then(()=>updateGameTabUnderline(false));
+gameTabMotion?.addEventListener('change',()=>updateGameTabUnderline(false));
 document.querySelectorAll('[data-filter]').forEach((button,index)=>{button.setAttribute('aria-controls','game-grid');button.addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-filter]')];const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;if(next!==null){event.preventDefault();tabs[next].focus();tabs[next].click();}});});
 $('player-search').addEventListener('input',e=>{clearSlotTransitions();gridContext=null;state.player=null;state.search=e.target.value.trim().toLowerCase();render();});
 document.querySelectorAll('[data-density]').forEach(b=>b.addEventListener('click',()=>{clearSlotTransitions();displaySettings.set('density',b.dataset.density);queueRender();}));
@@ -319,7 +374,7 @@ $('paste-link-prompt').addEventListener('click',()=>{$('tournament-input').focus
 $('refresh-button').addEventListener('click',()=>{state.lastDiscovery=0;state.discoveryRequested=true;state.refreshActiveGames=true;void updateTournament();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearSlotTransitions();live.pause(document.hidden);pairings.pause(document.hidden);if(!document.hidden&&state.tournament){queueRender();state.discoveryRequested=true;state.refreshActiveGames=true;scheduleUpdates(0);}});
 const clockTimer=setInterval(renderClocks,1000);
-window.addEventListener('pagehide',()=>{clearSlotTransitions();state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();pairings.close();});
+window.addEventListener('pagehide',()=>{settleGameTabUnderline();clearSlotTransitions();state.controller?.abort();clearTimeout(state.timer);cancelAnimationFrame(state.renderTimer);clearInterval(clockTimer);live.close();pairings.close();});
 async function initializeTournament(){
   const authorization=await studyImport.restoreAuthorization();
   const parameters=new URLSearchParams(location.search),initial=parameters.get('swiss')??parameters.get('tournament');

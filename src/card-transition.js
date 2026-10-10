@@ -1,4 +1,4 @@
-const turnDuration=300,backgroundFadeDuration=160,logoHoldDuration=3000,logoFadeDuration=160;
+const turnDuration=300,backgroundFadeDuration=160,logoHoldDuration=1500,logoFadeDuration=160;
 
 // Replacements occupy the reverse face throughout a single half-turn.
 // Empty slots keep the logo after their card background fades away.
